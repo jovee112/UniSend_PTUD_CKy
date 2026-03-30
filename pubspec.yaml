@@ -1,0 +1,26 @@
+name: unisend
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.11.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.0.0
+  firebase_core: ^4.6.0
+  firebase_auth: ^6.3.0
+  flutter_svg: ^2.2.4
+  google_fonts: ^8.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+# Enable Material 3 in app code by setting `useMaterial3: true` in MaterialApp

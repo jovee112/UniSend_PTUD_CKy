@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1088634361868",
+    "project_id": "unisend-n4-ptud-ck",
+    "storage_bucket": "unisend-n4-ptud-ck.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1088634361868:android:8908af8b8699608313b629",
+        "android_client_info": {
+          "package_name": "com.example.unisend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDOJVQdL8n4kpAn_RaYOfhgwvwgzdTkAcU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
