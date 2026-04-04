@@ -1,236 +1,227 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/order.dart';
+import '../models/order_model.dart';
 
-class OrderActionResult {
-  const OrderActionResult({required this.success, required this.message});
+class OrderActionException implements Exception {
+  const OrderActionException(this.message);
 
-  final bool success;
   final String message;
+
+  @override
+  String toString() => message;
 }
 
 class OrderService {
-  OrderService({List<DeliveryOrder>? initialOrders})
-    : _ordersNotifier = ValueNotifier<List<DeliveryOrder>>(
-        initialOrders ?? <DeliveryOrder>[],
-      );
+  OrderService({FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  final ValueNotifier<List<DeliveryOrder>> _ordersNotifier;
+  final FirebaseFirestore _firestore;
 
-  ValueListenable<List<DeliveryOrder>> get ordersListenable => _ordersNotifier;
+  static const String ordersCollection = 'orders';
+  static const String chatRoomsCollection = 'chat_rooms';
 
-  List<DeliveryOrder> get orders =>
-      List<DeliveryOrder>.unmodifiable(_ordersNotifier.value);
+  CollectionReference<Map<String, dynamic>> get _ordersRef =>
+      _firestore.collection(ordersCollection);
 
-  List<DeliveryOrder> ordersByStatus(OrderStatus status) {
-    return orders.where((order) => order.status == status).toList();
+  Stream<List<OrderModel>> watchOrders() {
+    return _ordersRef.snapshots().map((snapshot) {
+      final orders = snapshot.docs
+          .map(OrderModel.fromFirestore)
+          .toList(growable: false);
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return orders;
+    });
   }
 
-  Set<String> knownUserIds({String? currentUserId}) {
-    final ids = <String>{
-      if (currentUserId != null && currentUserId.trim().isNotEmpty)
-        currentUserId.trim(),
-    };
+  Future<void> acceptOrder(String orderId, String currentUserId) async {
+    final actorId = currentUserId.trim();
+    if (actorId.isEmpty) {
+      throw const OrderActionException('Thiếu thông tin người dùng hiện tại.');
+    }
 
-    for (final order in orders) {
-      ids.add(order.senderId);
-      ids.add(order.receiverId);
-      ids.add(order.createdBy);
-      if (order.carrierId != null && order.carrierId!.trim().isNotEmpty) {
-        ids.add(order.carrierId!.trim());
+    final orderRef = _ordersRef.doc(orderId);
+    final roomRef = _firestore.collection(chatRoomsCollection).doc(orderId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(orderRef);
+      final roomSnapshot = await transaction.get(roomRef);
+      if (!snapshot.exists) {
+        throw const OrderActionException('Không tìm thấy đơn hàng.');
       }
-    }
 
-    return ids;
+      final order = OrderModel.fromFirestore(snapshot);
+      final actors = OrderPolicy.resolveActors(
+        order: order,
+        currentUserId: actorId,
+      );
+
+      if (order.status != OrderStatus.waitingCarrier) {
+        throw const OrderActionException(
+          'Đơn không còn ở trạng thái chờ nhận.',
+        );
+      }
+      if (order.hasCarrier) {
+        throw const OrderActionException('Đơn đã có người nhận trước đó.');
+      }
+      if (actors.isSender || actors.isReceiver) {
+        throw const OrderActionException(
+          'Người gửi/nhận không được phép nhận đơn này.',
+        );
+      }
+
+      final now = Timestamp.now();
+      transaction.update(orderRef, {
+        'carrier_id': actorId,
+        'carrierId': actorId,
+        'status': OrderStatus.waitingDelivery.name,
+        'updated_at': now,
+        'updatedAt': now,
+      });
+
+      final participants = <String>{
+        order.senderId,
+        order.receiverId,
+        actorId,
+      }.where((e) => e.trim().isNotEmpty).toList(growable: false);
+      if (!roomSnapshot.exists) {
+        transaction.set(roomRef, {
+          'id': roomRef.id,
+          'order_id': order.id,
+          'participants': participants,
+          'created_at': now,
+          'updated_at': now,
+        });
+      } else {
+        transaction.update(roomRef, {
+          'participants': participants,
+          'updated_at': now,
+        });
+      }
+    });
   }
 
-  DeliveryOrder createOrder({
-    required String currentUserId,
-    required String title,
-    required String description,
-    required String imageUrl,
-    required String senderId,
-    required String receiverId,
-    required Location senderLocation,
-    required Location receiverLocation,
-    DateTime? deadlineAt,
-  }) {
-    final now = DateTime.now();
-    final String normalizedCurrentUserId = currentUserId.trim();
-    final String normalizedSenderId = senderId.trim().isEmpty
-        ? normalizedCurrentUserId
-        : senderId.trim();
+  Future<void> completeOrder(String orderId, String currentUserId) async {
+    final actorId = currentUserId.trim();
+    if (actorId.isEmpty) {
+      throw const OrderActionException('Thiếu thông tin người dùng hiện tại.');
+    }
 
-    final createdOrder = DeliveryOrder(
-      id: 'ORD-${now.millisecondsSinceEpoch}',
-      title: title.trim(),
-      description: description.trim(),
-      imageUrl: imageUrl,
-      senderId: normalizedSenderId,
-      receiverId: receiverId.trim(),
-      senderLocation: senderLocation,
-      receiverLocation: receiverLocation,
-      carrierId: null,
-      createdBy: normalizedCurrentUserId,
-      status: OrderStatus.waitingCarrier,
-      createdAt: now,
-      deadlineAt: deadlineAt ?? now.add(const Duration(hours: 4)),
-      canAccept: true,
-      canMarkDelivered: false,
-      canCancel: true,
-    );
+    final orderRef = _ordersRef.doc(orderId);
 
-    _ordersNotifier.value = <DeliveryOrder>[createdOrder, ...orders];
-    return createdOrder;
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(orderRef);
+      if (!snapshot.exists) {
+        throw const OrderActionException('Không tìm thấy đơn hàng.');
+      }
+
+      final order = OrderModel.fromFirestore(snapshot);
+      if (order.status != OrderStatus.waitingDelivery) {
+        throw const OrderActionException(
+          'Đơn chưa ở trạng thái có thể hoàn tất.',
+        );
+      }
+      if ((order.carrierId ?? '').trim() != actorId) {
+        throw const OrderActionException(
+          'Chỉ người nhận giao mới có thể hoàn tất đơn.',
+        );
+      }
+
+      final now = Timestamp.now();
+      transaction.update(orderRef, {
+        'status': OrderStatus.completed.name,
+        'updated_at': now,
+        'updatedAt': now,
+      });
+    });
   }
 
-  OrderActionResult acceptOrder(String orderId, String currentUserId) {
-    final index = _findOrderIndex(orderId);
-    if (index < 0) {
-      return const OrderActionResult(
-        success: false,
-        message: 'Không tìm thấy đơn để nhận.',
-      );
+  Future<void> cancelOrder(String orderId, String currentUserId) async {
+    final actorId = currentUserId.trim();
+    if (actorId.isEmpty) {
+      throw const OrderActionException('Thiếu thông tin người dùng hiện tại.');
     }
 
-    final order = orders[index];
-    final permissions = OrderPolicy.resolvePermissions(
-      order: order,
-      currentUserId: currentUserId,
-    );
-    if (!permissions.acceptAction.isVisible) {
-      return const OrderActionResult(
-        success: false,
-        message: 'Bạn không thuộc nhóm được phép nhận đơn này.',
-      );
-    }
+    final orderRef = _ordersRef.doc(orderId);
 
-    if (!permissions.acceptAction.isEnabled) {
-      return OrderActionResult(
-        success: false,
-        message:
-            permissions.acceptAction.deniedReason ??
-            'Hệ thống tạm thời từ chối nhận đơn.',
-      );
-    }
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(orderRef);
+      if (!snapshot.exists) {
+        throw const OrderActionException('Không tìm thấy đơn hàng.');
+      }
 
-    _updateOrderAt(
-      index,
-      order.copyWith(
-        carrierId: currentUserId.trim(),
-        status: OrderStatus.waitingDelivery,
-        canAccept: false,
-        canMarkDelivered: true,
-        canCancel: true,
-        acceptDeniedReason: null,
-        markDeliveredDeniedReason: null,
-        cancelDeniedReason: null,
-      ),
-    );
-    return const OrderActionResult(
-      success: true,
-      message: 'Đã nhận đơn thành công.',
-    );
+      final order = OrderModel.fromFirestore(snapshot);
+      final actors = OrderPolicy.resolveActors(
+        order: order,
+        currentUserId: actorId,
+      );
+
+      if (!(actors.isSender ||
+          actors.isReceiver ||
+          actors.isCarrier ||
+          actors.isCreator)) {
+        throw const OrderActionException('Bạn không có quyền hủy đơn này.');
+      }
+
+      final isCancellable =
+          order.status == OrderStatus.waitingCarrier ||
+          order.status == OrderStatus.waitingDelivery;
+      if (!isCancellable) {
+        throw const OrderActionException(
+          'Chỉ có thể hủy đơn đang chờ nhận hoặc đang giao.',
+        );
+      }
+
+      final now = Timestamp.now();
+      transaction.update(orderRef, {
+        'status': OrderStatus.cancelled.name,
+        'updated_at': now,
+        'updatedAt': now,
+      });
+    });
   }
 
-  OrderActionResult markDelivered(String orderId, String currentUserId) {
-    final index = _findOrderIndex(orderId);
-    if (index < 0) {
-      return const OrderActionResult(
-        success: false,
-        message: 'Không tìm thấy đơn để hoàn tất.',
-      );
+  Future<void> markOverdueOrdersIfNeeded() async {
+    try {
+      final snapshot = await _ordersRef
+          .where('status', whereIn: const ['waitingCarrier', 'waitingDelivery'])
+          .get();
+
+      final now = DateTime.now();
+      final updates = <Future<void>>[];
+      for (final doc in snapshot.docs) {
+        final order = OrderModel.fromFirestore(doc);
+        if (order.status == OrderStatus.completed ||
+            order.status == OrderStatus.cancelled) {
+          continue;
+        }
+        if (order.isLate) {
+          continue;
+        }
+        if (!now.isAfter(order.deadlineAt)) {
+          continue;
+        }
+
+        final lateMinutes = now.difference(order.deadlineAt).inMinutes;
+        final simulatedFee = (lateMinutes / 10).ceil() * 1000;
+
+        updates.add(
+          doc.reference.update({
+            'is_late': true,
+            'isLate': true,
+            'late_fee': simulatedFee,
+            'lateFee': simulatedFee,
+            'updated_at': Timestamp.now(),
+            'updatedAt': Timestamp.now(),
+          }),
+        );
+      }
+
+      if (updates.isNotEmpty) {
+        await Future.wait(updates);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('markOverdueOrdersIfNeeded error: $error\n$stackTrace');
     }
-
-    final order = orders[index];
-    final permissions = OrderPolicy.resolvePermissions(
-      order: order,
-      currentUserId: currentUserId,
-    );
-    if (!permissions.markDeliveredAction.isVisible) {
-      return const OrderActionResult(
-        success: false,
-        message: 'Bạn không có quyền hoàn tất đơn này.',
-      );
-    }
-
-    if (!permissions.markDeliveredAction.isEnabled) {
-      return OrderActionResult(
-        success: false,
-        message:
-            permissions.markDeliveredAction.deniedReason ??
-            'Hệ thống tạm thời từ chối hoàn tất đơn.',
-      );
-    }
-
-    _updateOrderAt(
-      index,
-      order.copyWith(
-        status: OrderStatus.completed,
-        canAccept: false,
-        canMarkDelivered: false,
-        canCancel: false,
-        cancelDeniedReason: 'Đơn đã hoàn thành nên không thể hủy.',
-      ),
-    );
-    return const OrderActionResult(
-      success: true,
-      message: 'Đơn đã được đánh dấu hoàn tất.',
-    );
-  }
-
-  OrderActionResult cancelOrder(String orderId, String currentUserId) {
-    final index = _findOrderIndex(orderId);
-    if (index < 0) {
-      return const OrderActionResult(
-        success: false,
-        message: 'Không tìm thấy đơn để hủy.',
-      );
-    }
-
-    final order = orders[index];
-    final permissions = OrderPolicy.resolvePermissions(
-      order: order,
-      currentUserId: currentUserId,
-    );
-    if (!permissions.cancelAction.isVisible) {
-      return const OrderActionResult(
-        success: false,
-        message: 'Bạn không có quyền hủy đơn này.',
-      );
-    }
-
-    if (!permissions.cancelAction.isEnabled) {
-      return OrderActionResult(
-        success: false,
-        message:
-            permissions.cancelAction.deniedReason ??
-            'Hệ thống tạm thời từ chối yêu cầu hủy đơn.',
-      );
-    }
-
-    _updateOrderAt(
-      index,
-      order.copyWith(
-        status: OrderStatus.cancelled,
-        canAccept: false,
-        canMarkDelivered: false,
-        canCancel: false,
-      ),
-    );
-    return const OrderActionResult(
-      success: true,
-      message: 'Đã hủy đơn thành công.',
-    );
-  }
-
-  int _findOrderIndex(String orderId) {
-    return orders.indexWhere((order) => order.id == orderId);
-  }
-
-  void _updateOrderAt(int index, DeliveryOrder updatedOrder) {
-    final mutableOrders = orders.toList();
-    mutableOrders[index] = updatedOrder;
-    _ordersNotifier.value = mutableOrders;
   }
 }

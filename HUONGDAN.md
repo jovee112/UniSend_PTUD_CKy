@@ -17,12 +17,13 @@ Các tính năng đang hoạt động thật:
 2. Firestore (lưu đơn, đọc danh sách đơn theo thời gian thực)
 3. Supabase Storage (tải ảnh đơn hàng)
 4. GPS và OpenStreetMap (lấy vị trí, chọn địa chỉ trên bản đồ)
+5. Chat realtime 3 bên theo đơn hàng (sender - carrier - receiver)
+6. Countdown deadline và đánh dấu đơn trễ hạn theo thời gian thực
 
 Các tính năng đang ở mức giao diện mô phỏng:
 
-1. Chat (chưa kết nối dữ liệu thật)
-2. Hồ sơ (nhiều nút vẫn đang hiển thị thông báo UI-only)
-3. Danh sách đơn gần trên tab Bản đồ (đang là dữ liệu mẫu)
+1. Hồ sơ (nhiều nút vẫn đang hiển thị thông báo UI-only)
+2. Danh sách đơn gần trên tab Bản đồ (đang là dữ liệu mẫu)
 
 ## 2. Cách chạy ứng dụng
 
@@ -87,7 +88,9 @@ Mỗi thẻ đơn hiển thị:
 2. Điểm lấy hàng và điểm giao hàng
 3. Khoảng cách dự kiến (km)
 4. Hạn giao
-5. Các nút thao tác theo quyền
+5. Countdown thời gian còn lại (hoặc thời gian quá hạn)
+6. Cờ trễ hạn và phí giả lập nếu đơn quá deadline
+7. Các nút thao tác theo quyền
 
 ### Quyền thao tác hiện tại
 
@@ -102,6 +105,8 @@ Mỗi thẻ đơn hiển thị:
 
 Quyền sửa địa chỉ được ràng buộc cả ở giao diện và trong transaction Firestore để tránh sửa sai luồng.
 
+Ngoài ra, các thao tác Nhận đơn, Hoàn tất giao, Hủy đơn đều chạy qua transaction Firestore để tránh race condition (ví dụ 2 người nhận cùng 1 đơn).
+
 ### Đổi tài khoản để test nhanh
 
 Trong tab Đơn hàng có nút đổi tài khoản thử nghiệm ở AppBar:
@@ -112,11 +117,26 @@ Trong tab Đơn hàng có nút đổi tài khoản thử nghiệm ở AppBar:
 
 ## 6. Hướng dẫn tab Trò chuyện
 
-Trang này hiện là giao diện mô phỏng:
+Tab Trò chuyện đã kết nối dữ liệu thật từ Firestore.
 
-1. Chưa có danh sách cuộc trò chuyện thật
-2. Nút gửi tin, gửi ảnh, gửi âm thanh, gửi vị trí đang hiển thị thông báo UI-only
-3. Chưa liên kết Firestore messages vào màn hình này
+Thiết kế dữ liệu:
+
+1. chat_rooms (id theo order_id)
+2. chat_rooms/{room_id}/messages
+
+Luồng hoạt động:
+
+1. Khi carrier nhận đơn thành công, hệ thống tự tạo (hoặc cập nhật) chat room cho 3 bên: sender, carrier, receiver.
+2. Vào tab Trò chuyện, hệ thống chỉ hiện các room mà current_user nằm trong participants.
+3. Chọn room ở cột trái để xem tin nhắn realtime ở cột phải.
+4. Gửi tin nhắn text, message được lưu realtime theo created_at.
+
+Hiện trạng hỗ trợ:
+
+1. Đã hỗ trợ text message
+2. Đã highlight tin nhắn của current user
+3. Đã auto scroll xuống cuối khi có tin mới
+4. Ảnh/location trong chat để làm tiếp ở bước sau
 
 ## 7. Hướng dẫn tab Hồ sơ
 
@@ -131,10 +151,15 @@ Trang này hiện có:
    Kiểm tra google-services.json, plugin Google Services trên Android và cấu hình Firebase theo từng nền tảng.
 2. Tải ảnh thất bại:
    Kiểm tra Supabase đã khởi tạo, bucket orders, quyền upload và kết nối mạng.
+   Lưu ý: Web đã dùng luồng upload bytes (không dùng Image.file), nên nếu còn lỗi thường là do bucket/policy.
 3. Không lấy được GPS:
    Kiểm tra đã bật Location Service, cấp quyền vị trí, và nếu dùng emulator thì đặt mock location.
 4. Không thấy đơn trong danh sách:
    Kiểm tra đơn đã tạo thành công trên Firestore collection orders hay chưa.
+5. Không thấy room chat sau khi nhận đơn:
+   Kiểm tra thao tác Nhận đơn đã thành công và user hiện tại có nằm trong participants của room hay không.
+6. Lỗi query/index trong chat:
+   Chat đã chuyển sang subcollection messages theo room để tránh yêu cầu composite index cũ. Nếu còn lỗi, kiểm tra Firestore rules.
 
 ## 9. Checklist test luồng hiện tại
 
@@ -142,9 +167,10 @@ Trang này hiện có:
 2. Đăng nhập
 3. Tạo đơn có ảnh và hai địa chỉ trên bản đồ
 4. Vào tab Đơn hàng, xác nhận đơn xuất hiện trong Chờ nhận đơn
-5. Đổi user id thử nghiệm, nhận đơn
-6. Carrier bấm Hoàn tất giao
-7. Kiểm tra đơn chuyển sang Hoàn thành
+5. Đổi user id thử nghiệm, nhận đơn (vai trò carrier)
+6. Sau khi nhận đơn, vào tab Trò chuyện và gửi/nhận tin nhắn giữa các vai trò
+7. Carrier bấm Hoàn tất giao
+8. Kiểm tra đơn chuyển sang Hoàn thành
 
 ---
 

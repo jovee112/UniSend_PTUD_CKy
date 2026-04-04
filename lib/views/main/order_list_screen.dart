@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 
 import '../../models/order.dart';
+import '../../providers/order_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../services/location_service.dart';
 import '../../services/order_service.dart';
@@ -49,7 +51,6 @@ class _OrderListScreenState extends State<OrderListScreen>
   late final TabController _tabController;
   final TextEditingController _switchUserController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
-  List<DeliveryOrder> _latestOrders = const <DeliveryOrder>[];
 
   @override
   void initState() {
@@ -70,12 +71,15 @@ class _OrderListScreenState extends State<OrderListScreen>
     );
   }
 
-  Set<String> _knownUserIdsFromOrders(String currentUserId) {
+  Set<String> _knownUserIdsFromOrders(
+    String currentUserId,
+    List<DeliveryOrder> orders,
+  ) {
     final ids = <String>{
       if (currentUserId.trim().isNotEmpty) currentUserId.trim(),
     };
 
-    for (final order in _latestOrders) {
+    for (final order in orders) {
       ids.add(order.senderId);
       ids.add(order.receiverId);
       ids.add(order.createdBy);
@@ -87,10 +91,14 @@ class _OrderListScreenState extends State<OrderListScreen>
     return ids;
   }
 
-  Future<void> _showSwitchUserDialog(String currentUserId) async {
+  Future<void> _showSwitchUserDialog(
+    String currentUserId,
+    List<DeliveryOrder> orders,
+  ) async {
     _switchUserController.text = currentUserId;
 
-    final knownIds = _knownUserIdsFromOrders(currentUserId).toList()..sort();
+    final knownIds = _knownUserIdsFromOrders(currentUserId, orders).toList()
+      ..sort();
 
     await showDialog<void>(
       context: context,
@@ -198,6 +206,21 @@ class _OrderListScreenState extends State<OrderListScreen>
     final hour = deadlineAt.hour.toString().padLeft(2, '0');
     final minute = deadlineAt.minute.toString().padLeft(2, '0');
     return '$day/$month/$year $hour:$minute';
+  }
+
+  String _buildCountdownText(DeliveryOrder order, DateTime now) {
+    final diff = order.deadlineAt.difference(now);
+    if (diff.isNegative) {
+      final overdue = now.difference(order.deadlineAt);
+      final hours = overdue.inHours;
+      final minutes = overdue.inMinutes.remainder(60);
+      return 'Quá hạn ${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+    }
+
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes.remainder(60);
+    final seconds = diff.inSeconds.remainder(60);
+    return 'Còn ${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   String _toFriendlyDescription(String rawDescription) {
@@ -345,18 +368,18 @@ class _OrderListScreenState extends State<OrderListScreen>
 
   Future<void> _acceptOrder(DeliveryOrder order, String currentUserId) async {
     try {
-      await _firestoreService.acceptOrder(order.id, currentUserId);
+      await context.read<OrderProvider>().acceptOrder(order.id, currentUserId);
       _showMessage('Đã nhận đơn thành công.');
     } catch (e) {
       _showMessage('Không thể nhận đơn: $e');
     }
   }
 
-  Future<void> _markDelivered(DeliveryOrder order) async {
+  Future<void> _markDelivered(DeliveryOrder order, String currentUserId) async {
     try {
-      await _firestoreService.updateDeliveryLocation(
+      await context.read<OrderProvider>().completeOrder(
         order.id,
-        order.receiverLocation,
+        currentUserId,
       );
       _showMessage('Đơn đã được đánh dấu hoàn tất.');
     } catch (e) {
@@ -364,9 +387,9 @@ class _OrderListScreenState extends State<OrderListScreen>
     }
   }
 
-  Future<void> _cancelOrder(DeliveryOrder order) async {
+  Future<void> _cancelOrder(DeliveryOrder order, String currentUserId) async {
     try {
-      await _firestoreService.cancelOrder(order.id);
+      await context.read<OrderProvider>().cancelOrder(order.id, currentUserId);
       _showMessage('Đã hủy đơn thành công.');
     } catch (e) {
       _showMessage('Không thể hủy đơn: $e');
@@ -412,6 +435,7 @@ class _OrderListScreenState extends State<OrderListScreen>
     OrderPermissions permissions,
     OrderActorFlags actors,
     String currentUserId,
+    OrderProvider orderProvider,
   ) {
     final actions = <OrderCardAction>[];
 
@@ -420,8 +444,12 @@ class _OrderListScreenState extends State<OrderListScreen>
         OrderCardAction(
           label: 'Nhận đơn',
           icon: Icons.how_to_reg_outlined,
-          isEnabled: permissions.acceptAction.isEnabled,
-          onPressed: permissions.acceptAction.isEnabled
+          isEnabled:
+              permissions.acceptAction.isEnabled &&
+              !orderProvider.isOrderBusy(order.id),
+          onPressed:
+              permissions.acceptAction.isEnabled &&
+                  !orderProvider.isOrderBusy(order.id)
               ? () => _acceptOrder(order, currentUserId)
               : null,
         ),
@@ -433,9 +461,13 @@ class _OrderListScreenState extends State<OrderListScreen>
         OrderCardAction(
           label: 'Hoàn tất giao',
           icon: Icons.done_all_outlined,
-          isEnabled: permissions.markDeliveredAction.isEnabled,
-          onPressed: permissions.markDeliveredAction.isEnabled
-              ? () => _markDelivered(order)
+          isEnabled:
+              permissions.markDeliveredAction.isEnabled &&
+              !orderProvider.isOrderBusy(order.id),
+          onPressed:
+              permissions.markDeliveredAction.isEnabled &&
+                  !orderProvider.isOrderBusy(order.id)
+              ? () => _markDelivered(order, currentUserId)
               : null,
         ),
       );
@@ -446,10 +478,14 @@ class _OrderListScreenState extends State<OrderListScreen>
         OrderCardAction(
           label: 'Hủy đơn',
           icon: Icons.cancel_outlined,
-          isEnabled: permissions.cancelAction.isEnabled,
+          isEnabled:
+              permissions.cancelAction.isEnabled &&
+              !orderProvider.isOrderBusy(order.id),
           isDestructive: true,
-          onPressed: permissions.cancelAction.isEnabled
-              ? () => _cancelOrder(order)
+          onPressed:
+              permissions.cancelAction.isEnabled &&
+                  !orderProvider.isOrderBusy(order.id)
+              ? () => _cancelOrder(order, currentUserId)
               : null,
         ),
       );
@@ -520,6 +556,7 @@ class _OrderListScreenState extends State<OrderListScreen>
     List<DeliveryOrder> allOrders,
     OrderStatus status,
     String currentUserId,
+    OrderProvider orderProvider,
   ) {
     final orders = allOrders.where((order) => order.status == status).toList();
     if (orders.isEmpty) {
@@ -557,15 +594,24 @@ class _OrderListScreenState extends State<OrderListScreen>
           title: order.title,
           description:
               '${_toFriendlyDescription(order.description)}\n\n${_buildRouteDetails(order)}',
-          deadline: 'Hạn giao: ${_formatDeadline(order.deadlineAt)}',
+          deadline:
+              'Hạn giao: ${_formatDeadline(order.deadlineAt)} (${_buildCountdownText(order, orderProvider.now)})',
           statusText: _tabLabel(order.status),
           statusIcon: _tabIcon(order.status),
           statusColor: _statusColor(order.status, scheme),
           imageUrl: order.imageUrl,
-          summaryText: cardMessage.text,
           summaryIcon: cardMessage.icon,
           summaryColor: cardMessage.color,
-          actions: _buildActions(order, permissions, actors, currentUserId),
+          summaryText: order.isLate
+              ? '${cardMessage.text}\nĐơn trễ hạn. Phí giả lập: ${order.lateFee}đ'
+              : cardMessage.text,
+          actions: _buildActions(
+            order,
+            permissions,
+            actors,
+            currentUserId,
+            orderProvider,
+          ),
         );
       },
     );
@@ -573,71 +619,56 @@ class _OrderListScreenState extends State<OrderListScreen>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: widget.userSessionService,
-      builder: (context, child) {
-        final currentUserId = widget.userSessionService.currentUserId;
-        return StreamBuilder<List<DeliveryOrder>>(
-          stream: _firestoreService.watchAllOrders(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Scaffold(
-                appBar: AppBar(title: const Text('Đơn hàng')),
-                body: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Không tải được danh sách đơn: ${snapshot.error}',
-                    ),
-                  ),
-                ),
-              );
-            }
+    final currentUserId = context.watch<UserSessionService>().currentUserId;
+    final orderProvider = context.watch<OrderProvider>();
 
-            final orders = snapshot.data ?? const <DeliveryOrder>[];
-            _latestOrders = orders;
+    if (orderProvider.error != null && orderProvider.orders.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Đơn hàng')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Không tải được danh sách đơn: ${orderProvider.error}'),
+          ),
+        ),
+      );
+    }
 
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                orders.isEmpty) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
+    if (orderProvider.isLoading && orderProvider.orders.isEmpty) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text('Đơn hàng'),
-                actions: [
-                  IconButton(
-                    onPressed: () => _showSwitchUserDialog(currentUserId),
-                    icon: const Icon(Icons.manage_accounts_outlined),
-                    tooltip: 'Đổi người dùng thử nghiệm',
-                  ),
-                ],
-                bottom: TabBar(
-                  controller: _tabController,
-                  tabs: _tabs
-                      .map((status) => Tab(text: _tabLabel(status)))
-                      .toList(),
-                ),
+    final orders = orderProvider.orders;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Đơn hàng'),
+        actions: [
+          IconButton(
+            onPressed: () => _showSwitchUserDialog(currentUserId, orders),
+            icon: const Icon(Icons.manage_accounts_outlined),
+            tooltip: 'Đổi người dùng thử nghiệm',
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: _tabs.map((status) => Tab(text: _tabLabel(status))).toList(),
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: _tabs
+            .map(
+              (status) => _buildOrderTab(
+                context,
+                orders,
+                status,
+                currentUserId,
+                orderProvider,
               ),
-              body: TabBarView(
-                controller: _tabController,
-                children: _tabs
-                    .map(
-                      (status) => _buildOrderTab(
-                        context,
-                        orders,
-                        status,
-                        currentUserId,
-                      ),
-                    )
-                    .toList(),
-              ),
-            );
-          },
-        );
-      },
+            )
+            .toList(),
+      ),
     );
   }
 }
