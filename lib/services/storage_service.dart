@@ -86,4 +86,88 @@ class StorageService {
       return null;
     }
   }
+
+  Future<String?> resolveStoredImageUrl(String storedUrl) async {
+    final trimmedUrl = storedUrl.trim();
+    if (trimmedUrl.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.tryParse(trimmedUrl);
+    if (uri == null || !uri.host.contains('supabase.co')) {
+      return trimmedUrl;
+    }
+
+    final segments = uri.pathSegments;
+    final signIndex = segments.indexOf('sign');
+    final publicIndex = segments.indexOf('public');
+    final markerIndex = signIndex >= 0 ? signIndex : publicIndex;
+
+    if (markerIndex < 0 || markerIndex + 2 > segments.length) {
+      return trimmedUrl;
+    }
+
+    final bucketName = segments[markerIndex + 1];
+    final objectPath = segments.sublist(markerIndex + 2).join('/');
+    if (bucketName.trim().isEmpty || objectPath.trim().isEmpty) {
+      return trimmedUrl;
+    }
+
+    final supabase = _tryGetSupabaseClient();
+    if (supabase == null) {
+      return trimmedUrl;
+    }
+
+    try {
+      if (publicIndex >= 0) {
+        return supabase.storage.from(bucketName).getPublicUrl(objectPath);
+      }
+
+      return await supabase.storage
+          .from(bucketName)
+          .createSignedUrl(objectPath, 3600);
+    } catch (e) {
+      debugPrint('--- Resolve image url failed: $e');
+      return trimmedUrl;
+    }
+  }
+
+  /// Upload ảnh xác thực tài khoản (bucket verifications).
+  Future<String?> uploadVerificationImage({required XFile file}) async {
+    try {
+      final supabase = _tryGetSupabaseClient();
+      if (supabase == null) {
+        debugPrint('--- Supabase chưa được khởi tạo. Không thể upload ảnh.');
+        return null;
+      }
+
+      final String bucketName = 'verifications';
+      final String userId = _resolveUploaderId();
+      final String fileName = "${DateTime.now().millisecondsSinceEpoch}.jpg";
+      final String path = "$userId/$fileName";
+      final Map<String, String> metadata = {'uploaded_by': userId};
+      final Uint8List fileBytes = await file.readAsBytes();
+
+      await supabase.storage
+          .from(bucketName)
+          .uploadBinary(
+            path,
+            fileBytes,
+            fileOptions: FileOptions(
+              cacheControl: '3600',
+              upsert: false,
+              contentType: 'image/jpeg',
+              metadata: metadata,
+            ),
+          );
+
+      final url = supabase.storage.from(bucketName).getPublicUrl(path);
+
+      debugPrint('--- Upload xác thực thành công: $url');
+      return url;
+    } catch (e) {
+      debugPrint('--- Lỗi StorageService (verification): $e');
+      return null;
+    }
+  }
 }

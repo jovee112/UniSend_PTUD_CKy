@@ -124,29 +124,142 @@ class _MainAppState extends State<MainApp> {
   }
 
   ThemeData _buildTheme(Brightness brightness) {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: Colors.indigo,
+    final baseScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0F4C5C),
       brightness: brightness,
     );
+
+    final colorScheme = brightness == Brightness.light
+        ? baseScheme.copyWith(
+            primary: const Color(0xFF0F4C5C),
+            onPrimary: const Color(0xFFFFFFFF),
+            primaryContainer: const Color(0xFFCFE7EA),
+            onPrimaryContainer: const Color(0xFF0B2D36),
+            secondary: const Color(0xFFF7B267),
+            onSecondary: const Color(0xFF3A2200),
+            secondaryContainer: const Color(0xFFFFE3C7),
+            onSecondaryContainer: const Color(0xFF5B3700),
+            tertiary: const Color(0xFF3D5A80),
+            onTertiary: const Color(0xFFFFFFFF),
+            tertiaryContainer: const Color(0xFFD7E3F4),
+            onTertiaryContainer: const Color(0xFF1E2E4A),
+            error: const Color(0xFFB42318),
+            onError: const Color(0xFFFFFFFF),
+            errorContainer: const Color(0xFFFFDAD6),
+            onErrorContainer: const Color(0xFF410002),
+            surface: const Color(0xFFF7F4EF),
+            onSurface: const Color(0xFF1F1B16),
+            surfaceContainerHighest: const Color(0xFFEAE2D6),
+            onSurfaceVariant: const Color(0xFF4C463D),
+            outline: const Color(0xFF8A8378),
+            outlineVariant: const Color(0xFFD4CBBE),
+            inverseSurface: const Color(0xFF34302A),
+            onInverseSurface: const Color(0xFFF3EEE6),
+            inversePrimary: const Color(0xFF8BD3DD),
+          )
+        : baseScheme.copyWith(
+            primary: const Color(0xFF8BD3DD),
+            onPrimary: const Color(0xFF00363F),
+            primaryContainer: const Color(0xFF0B4A55),
+            onPrimaryContainer: const Color(0xFFCFE7EA),
+            secondary: const Color(0xFFF7B267),
+            onSecondary: const Color(0xFF3A2200),
+            secondaryContainer: const Color(0xFF5B3700),
+            onSecondaryContainer: const Color(0xFFFFE3C7),
+            tertiary: const Color(0xFFB8C7E6),
+            onTertiary: const Color(0xFF1E2E4A),
+            tertiaryContainer: const Color(0xFF2B3E5C),
+            onTertiaryContainer: const Color(0xFFD7E3F4),
+            error: const Color(0xFFFFB4AB),
+            onError: const Color(0xFF690005),
+            errorContainer: const Color(0xFF93000A),
+            onErrorContainer: const Color(0xFFFFDAD6),
+            surface: const Color(0xFF121413),
+            onSurface: const Color(0xFFE7E2D9),
+            surfaceContainerHighest: const Color(0xFF2A2E2C),
+            onSurfaceVariant: const Color(0xFFCAC5BC),
+            outline: const Color(0xFF948F86),
+            outlineVariant: const Color(0xFF444841),
+            inverseSurface: const Color(0xFFE7E2D9),
+            onInverseSurface: const Color(0xFF2B2A27),
+            inversePrimary: const Color(0xFF0F4C5C),
+          );
 
     final base = ThemeData(
       brightness: brightness,
       colorScheme: colorScheme,
       useMaterial3: true,
+      scaffoldBackgroundColor: colorScheme.surface,
     );
 
     return base.copyWith(
-      textTheme: GoogleFonts.interTextTheme(base.textTheme),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      textTheme: GoogleFonts.spaceGroteskTextTheme(base.textTheme),
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.spaceGrotesk(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: colorScheme.onSurface,
+        ),
       ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
+      cardTheme: CardThemeData(
+        color: colorScheme.surface,
+        elevation: 0.6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: EdgeInsets.zero,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withAlpha(120),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
           minimumSize: const Size.fromHeight(48),
         ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          side: BorderSide(color: colorScheme.outlineVariant),
+          minimumSize: const Size.fromHeight(48),
+        ),
+      ),
+      chipTheme: base.chipTheme.copyWith(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: colorScheme.inverseSurface,
+        contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
   }
@@ -170,7 +283,7 @@ class _MainAppState extends State<MainApp> {
         home: _FirebaseConfigErrorScreen(
           errorMessage:
               widget.firebaseInitError ??
-              'Firebase chua khoi tao duoc. Kiem tra cau hinh Android/iOS/Web.',
+              'Firebase chưa khởi tạo được. Kiểm tra cấu hình Android/iOS/Web.',
         ),
       );
     }
@@ -248,21 +361,21 @@ class _FirebaseConfigErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Loi cau hinh Firebase')),
+      appBar: AppBar(title: const Text('Lỗi cấu hình Firebase')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Ung dung dang o che do Firebase that. Vui long kiem tra cau hinh.',
+              'Ứng dụng đang ở chế độ Firebase thật. Vui lòng kiểm tra cấu hình.',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
             SelectableText(errorMessage),
             const SizedBox(height: 20),
             Text(
-              'Neu can bo qua tam thoi de test UI, chay voi --dart-define=BYPASS_LOGIN=true.',
+              'Nếu cần bỏ qua tạm thời để test UI, chạy với --dart-define=BYPASS_LOGIN=true.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],

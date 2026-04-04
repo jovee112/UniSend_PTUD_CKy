@@ -227,4 +227,54 @@ class ChatService {
       });
     });
   }
+
+  Future<void> leaveRoom({
+    required String roomId,
+    required String userId,
+  }) async {
+    final normalizedRoomId = roomId.trim();
+    final normalizedUserId = userId.trim();
+
+    if (normalizedRoomId.isEmpty) {
+      throw Exception('roomId không hợp lệ.');
+    }
+    if (normalizedUserId.isEmpty) {
+      throw Exception('userId không hợp lệ.');
+    }
+
+    final roomRef = _chatRoomsRef.doc(normalizedRoomId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(roomRef);
+      if (!snapshot.exists) {
+        throw Exception('Không tìm thấy phòng chat.');
+      }
+
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final participants =
+          ((data['participants'] as List?) ?? const <dynamic>[])
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toSet()
+              .toList(growable: false);
+
+      if (!participants.contains(normalizedUserId)) {
+        throw Exception('Bạn không còn trong phòng chat này.');
+      }
+
+      final remainingParticipants = participants
+          .where((id) => id != normalizedUserId)
+          .toList(growable: false);
+
+      if (remainingParticipants.isEmpty) {
+        transaction.delete(roomRef);
+        return;
+      }
+
+      transaction.update(roomRef, {
+        'participants': remainingParticipants,
+        'updated_at': Timestamp.now(),
+      });
+    });
+  }
 }

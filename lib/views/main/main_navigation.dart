@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/chat_provider.dart';
 import '../../services/order_service.dart';
 import '../../services/user_session_service.dart';
 import 'chat_screen.dart';
@@ -27,17 +29,28 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  late final List<Widget> _screens;
+
+  void _openChatRoom(String roomId) {
+    context.read<ChatProvider>().selectRoom(roomId);
+    setState(() {
+      _currentIndex = 2;
+    });
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final screens = <Widget>[
+  void initState() {
+    super.initState();
+    _screens = <Widget>[
       MapScreen(
         orderService: widget.orderService,
         userSessionService: widget.userSessionService,
+        onOpenChat: (roomId) async => _openChatRoom(roomId),
       ),
       OrderListScreen(
         orderService: widget.orderService,
         userSessionService: widget.userSessionService,
+        onOpenChat: (roomId) async => _openChatRoom(roomId),
       ),
       const ChatScreen(),
       ProfileScreen(
@@ -45,9 +58,24 @@ class _MainNavigationState extends State<MainNavigation> {
         onThemeModeChanged: widget.onThemeModeChanged,
       ),
     ];
+  }
 
+  @override
+  void didUpdateWidget(covariant MainNavigation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isDarkMode != widget.isDarkMode ||
+        oldWidget.onThemeModeChanged != widget.onThemeModeChanged) {
+      _screens[3] = ProfileScreen(
+        isDarkMode: widget.isDarkMode,
+        onThemeModeChanged: widget.onThemeModeChanged,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      body: screens[_currentIndex],
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (int index) {

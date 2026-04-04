@@ -68,6 +68,10 @@ class OrderModel {
     required this.status,
     required this.createdAt,
     required this.deadlineAt,
+    this.senderAccountId,
+    this.receiverAccountId,
+    this.carrierAccountId,
+    this.createdByAccountId,
     this.carrierId,
     this.pickupLocation,
     this.deliveryLocation,
@@ -77,6 +81,7 @@ class OrderModel {
     this.canAccept,
     this.canMarkDelivered,
     this.canCancel,
+    this.cancelReason,
     this.acceptDeniedReason,
     this.markDeliveredDeniedReason,
     this.cancelDeniedReason,
@@ -88,6 +93,10 @@ class OrderModel {
   final String imageUrl;
   final String senderId;
   final String receiverId;
+  final String? senderAccountId;
+  final String? receiverAccountId;
+  final String? carrierAccountId;
+  final String? createdByAccountId;
   final String? carrierId;
   final String createdBy;
   final Location senderLocation;
@@ -103,6 +112,7 @@ class OrderModel {
   final bool? canAccept;
   final bool? canMarkDelivered;
   final bool? canCancel;
+  final String? cancelReason;
   final String? acceptDeniedReason;
   final String? markDeliveredDeniedReason;
   final String? cancelDeniedReason;
@@ -151,6 +161,18 @@ class OrderModel {
           (data['receiver_id'] as String?) ??
           (data['receiverId'] as String?) ??
           '',
+      senderAccountId:
+          (data['senderAccountId'] as String?) ??
+          (data['sender_account_id'] as String?),
+      receiverAccountId:
+          (data['receiverAccountId'] as String?) ??
+          (data['receiver_account_id'] as String?),
+      carrierAccountId:
+          (data['carrierAccountId'] as String?) ??
+          (data['carrier_account_id'] as String?),
+      createdByAccountId:
+          (data['createdByAccountId'] as String?) ??
+          (data['created_by_account_id'] as String?),
       carrierId:
           (data['carrier_id'] as String?) ?? (data['carrierId'] as String?),
       createdBy:
@@ -180,6 +202,7 @@ class OrderModel {
       canAccept: data['canAccept'] as bool?,
       canMarkDelivered: data['canMarkDelivered'] as bool?,
       canCancel: data['canCancel'] as bool?,
+      cancelReason: data['cancelReason'] as String?,
       acceptDeniedReason: data['acceptDeniedReason'] as String?,
       markDeliveredDeniedReason: data['markDeliveredDeniedReason'] as String?,
       cancelDeniedReason: data['cancelDeniedReason'] as String?,
@@ -197,6 +220,14 @@ class OrderModel {
       'senderId': senderId,
       'receiver_id': receiverId,
       'receiverId': receiverId,
+      'senderAccountId': senderAccountId,
+      'sender_account_id': senderAccountId,
+      'receiverAccountId': receiverAccountId,
+      'receiver_account_id': receiverAccountId,
+      'carrierAccountId': carrierAccountId,
+      'carrier_account_id': carrierAccountId,
+      'createdByAccountId': createdByAccountId,
+      'created_by_account_id': createdByAccountId,
       'carrier_id': carrierId,
       'carrierId': carrierId,
       'created_by': createdBy,
@@ -219,6 +250,7 @@ class OrderModel {
       'canAccept': canAccept,
       'canMarkDelivered': canMarkDelivered,
       'canCancel': canCancel,
+      'cancelReason': cancelReason,
       'acceptDeniedReason': acceptDeniedReason,
       'markDeliveredDeniedReason': markDeliveredDeniedReason,
       'cancelDeniedReason': cancelDeniedReason,
@@ -231,6 +263,10 @@ class OrderModel {
     String? imageUrl,
     String? senderId,
     String? receiverId,
+    String? senderAccountId,
+    String? receiverAccountId,
+    String? carrierAccountId,
+    String? createdByAccountId,
     Location? senderLocation,
     Location? receiverLocation,
     String? carrierId,
@@ -247,6 +283,7 @@ class OrderModel {
     bool? canAccept,
     bool? canMarkDelivered,
     bool? canCancel,
+    String? cancelReason,
     String? acceptDeniedReason,
     String? markDeliveredDeniedReason,
     String? cancelDeniedReason,
@@ -258,6 +295,10 @@ class OrderModel {
       imageUrl: imageUrl ?? this.imageUrl,
       senderId: senderId ?? this.senderId,
       receiverId: receiverId ?? this.receiverId,
+      senderAccountId: senderAccountId ?? this.senderAccountId,
+      receiverAccountId: receiverAccountId ?? this.receiverAccountId,
+      carrierAccountId: carrierAccountId ?? this.carrierAccountId,
+      createdByAccountId: createdByAccountId ?? this.createdByAccountId,
       senderLocation: senderLocation ?? this.senderLocation,
       receiverLocation: receiverLocation ?? this.receiverLocation,
       carrierId: clearCarrier ? null : (carrierId ?? this.carrierId),
@@ -273,6 +314,7 @@ class OrderModel {
       canAccept: canAccept ?? this.canAccept,
       canMarkDelivered: canMarkDelivered ?? this.canMarkDelivered,
       canCancel: canCancel ?? this.canCancel,
+      cancelReason: cancelReason ?? this.cancelReason,
       acceptDeniedReason: acceptDeniedReason ?? this.acceptDeniedReason,
       markDeliveredDeniedReason:
           markDeliveredDeniedReason ?? this.markDeliveredDeniedReason,

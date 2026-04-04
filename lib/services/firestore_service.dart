@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+
 import '../models/order.dart';
 
-/// Service quản lý tất cả thao tác Firestore Database
+/// Service for Firestore CRUD and realtime reads.
 class FirestoreService {
   static bool get isFirebaseReady => Firebase.apps.isNotEmpty;
 
@@ -17,7 +18,7 @@ class FirestoreService {
 
   // ===== ORDER OPERATIONS =====
 
-  /// STREAM - Theo dõi tất cả đơn hàng theo thời gian thực
+  /// Stream all orders, newest first.
   Stream<List<DeliveryOrder>> watchAllOrders() {
     if (!isFirebaseReady) {
       debugPrint(
@@ -37,30 +38,14 @@ class FirestoreService {
         );
   }
 
-  /// CREATE - Tạo đơn hàng mới
-  /// [order] là DeliveryOrder cần lưu
+  /// Create a new order.
   Future<String> createOrder(DeliveryOrder order) async {
     try {
       final docRef = _firestore.collection(ordersCollection).doc(order.id);
+      final data = order.toMap();
+      data['updatedAt'] = Timestamp.now();
 
-      await docRef.set({
-        'id': order.id,
-        'title': order.title,
-        'description': order.description,
-        'imageUrl': order.imageUrl,
-        'senderId': order.senderId,
-        'receiverId': order.receiverId,
-        'carrierId': order.carrierId,
-        'createdBy': order.createdBy,
-        'status': order.status.name,
-        'createdAt': Timestamp.fromDate(order.createdAt),
-        'deadlineAt': Timestamp.fromDate(order.deadlineAt),
-        'senderLocation': order.senderLocation.toMap(),
-        'receiverLocation': order.receiverLocation.toMap(),
-        'pickupLocation': order.pickupLocation?.toMap(),
-        'deliveryLocation': order.deliveryLocation?.toMap(),
-      });
-
+      await docRef.set(data);
       return order.id;
     } catch (e) {
       debugPrint('Error creating order: $e');
@@ -68,7 +53,7 @@ class FirestoreService {
     }
   }
 
-  /// READ - Lấy đơn hàng theo ID
+  /// Read an order by ID.
   Future<DeliveryOrder?> getOrderById(String orderId) async {
     try {
       final doc = await _firestore
@@ -87,15 +72,13 @@ class FirestoreService {
     }
   }
 
-  /// READ - Lấy tất cả đơn hàng của người dùng
-  /// [userId] ID của người dùng
-  /// [role] vai trò: 'sender' (người gửi), 'receiver' (người nhận), 'carrier' (người trung gian)
+  /// Read orders by role.
   Future<List<DeliveryOrder>> getUserOrders(
     String userId, {
     String role = 'sender',
   }) async {
     try {
-      late Query query;
+      Query<Map<String, dynamic>> query;
 
       switch (role) {
         case 'sender':
@@ -119,18 +102,15 @@ class FirestoreService {
 
       final querySnapshot = await query.get();
       return querySnapshot.docs
-          .map(
-            (doc) =>
-                _mapDocToOrder(doc as DocumentSnapshot<Map<String, dynamic>>),
-          )
-          .toList();
+          .map((doc) => _mapDocToOrder(doc))
+          .toList(growable: false);
     } catch (e) {
       debugPrint('Error getting user orders: $e');
-      return [];
+      return <DeliveryOrder>[];
     }
   }
 
-  /// READ - Lấy các đơn hàng theo status
+  /// Read orders by status.
   Future<List<DeliveryOrder>> getOrdersByStatus(String status) async {
     try {
       final querySnapshot = await _firestore
@@ -140,55 +120,48 @@ class FirestoreService {
           .get();
 
       return querySnapshot.docs
-          .map(
-            (doc) =>
-                _mapDocToOrder(doc as DocumentSnapshot<Map<String, dynamic>>),
-          )
-          .toList();
+          .map((doc) => _mapDocToOrder(doc))
+          .toList(growable: false);
     } catch (e) {
       debugPrint('Error getting orders by status: $e');
-      return [];
+      return <DeliveryOrder>[];
     }
   }
 
-  /// READ - Lấy các đơn đang chờ người trung gian (trong bán kính cho trước)
-  /// [userLocation] vị trí hiện tại của người trung gian
-  /// [radiusKm] bán kính tìm kiếm (mặc định 5km)
+  /// Read available orders near a carrier.
   Future<List<DeliveryOrder>> getAvailableOrdersNearby(
     Location userLocation, {
     double radiusKm = 5.0,
   }) async {
     try {
-      // Lấy tất cả đơn chờ người trung gian
       final querySnapshot = await _firestore
           .collection(ordersCollection)
           .where('status', isEqualTo: 'waitingCarrier')
           .get();
 
       final orders = querySnapshot.docs
-          .map(
-            (doc) =>
-                _mapDocToOrder(doc as DocumentSnapshot<Map<String, dynamic>>),
-          )
-          .toList();
+          .map((doc) => _mapDocToOrder(doc))
+          .toList(growable: false);
 
-      // Lọc những đơn nằm trong bán kính
-      return orders.where((order) {
-        final distance = userLocation.distanceTo(order.receiverLocation);
-        return distance <= radiusKm;
-      }).toList();
+      return orders
+          .where((order) {
+            final targetLocation = order.pickupLocation ?? order.senderLocation;
+            final distance = userLocation.distanceTo(targetLocation);
+            return distance <= radiusKm;
+          })
+          .toList(growable: false);
     } catch (e) {
       debugPrint('Error getting nearby orders: $e');
-      return [];
+      return <DeliveryOrder>[];
     }
   }
 
-  /// UPDATE - Cập nhật status đơn hàng
-  /// Luồng cập nhật: waitingCarrier → waitingDelivery → completed
+  /// Update order status.
   Future<void> updateOrderStatus(String orderId, String newStatus) async {
     try {
       await _firestore.collection(ordersCollection).doc(orderId).update({
         'status': newStatus,
+        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       debugPrint('Error updating order status: $e');
@@ -196,13 +169,13 @@ class FirestoreService {
     }
   }
 
-  /// UPDATE - Nhận đơn (gán người trung gian)
-  /// Khi người trung gian C nhận đơn
+  /// Accept an order and assign carrier.
   Future<void> acceptOrder(String orderId, String carrierId) async {
     try {
       await _firestore.collection(ordersCollection).doc(orderId).update({
         'carrierId': carrierId,
         'status': 'waitingDelivery',
+        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       debugPrint('Error accepting order: $e');
@@ -210,8 +183,7 @@ class FirestoreService {
     }
   }
 
-  /// UPDATE - Sửa địa chỉ gửi/nhận khi đơn chưa có ai nhận giao
-  /// Chỉ cho phép người tạo đơn hoặc người gửi sửa
+  /// Update sender/receiver locations before an order is accepted.
   Future<void> updateOrderLocations({
     required String orderId,
     required String actorUserId,
@@ -260,7 +232,7 @@ class FirestoreService {
     }
   }
 
-  /// UPDATE - Cập nhật vị trí lấy hàng (khi C lấy từ A)
+  /// Update pickup location and move to waitingDelivery.
   Future<void> updatePickupLocation(
     String orderId,
     Location pickupLocation,
@@ -269,6 +241,7 @@ class FirestoreService {
       await _firestore.collection(ordersCollection).doc(orderId).update({
         'pickupLocation': pickupLocation.toMap(),
         'status': 'waitingDelivery',
+        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       debugPrint('Error updating pickup location: $e');
@@ -276,7 +249,7 @@ class FirestoreService {
     }
   }
 
-  /// UPDATE - Cập nhật vị trí giao hàng (khi C giao cho B)
+  /// Update delivery location and mark completed.
   Future<void> updateDeliveryLocation(
     String orderId,
     Location deliveryLocation,
@@ -285,6 +258,7 @@ class FirestoreService {
       await _firestore.collection(ordersCollection).doc(orderId).update({
         'deliveryLocation': deliveryLocation.toMap(),
         'status': 'completed',
+        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       debugPrint('Error updating delivery location: $e');
@@ -292,11 +266,29 @@ class FirestoreService {
     }
   }
 
-  /// DELETE - Hủy đơn hàng
-  Future<void> cancelOrder(String orderId) async {
+  /// Update delivery deadline.
+  Future<void> updateOrderDeadline(String orderId, DateTime deadlineAt) async {
+    try {
+      final timestamp = Timestamp.fromDate(deadlineAt);
+      await _firestore.collection(ordersCollection).doc(orderId).update({
+        'deadline': timestamp,
+        'deadlineAt': timestamp,
+        'deadline_at': timestamp,
+        'updatedAt': Timestamp.now(),
+      });
+    } catch (e) {
+      debugPrint('Error updating order deadline: $e');
+      rethrow;
+    }
+  }
+
+  /// Cancel an order.
+  Future<void> cancelOrder(String orderId, {String? reason}) async {
     try {
       await _firestore.collection(ordersCollection).doc(orderId).update({
         'status': 'cancelled',
+        'cancelReason': reason?.trim().isEmpty == true ? null : reason?.trim(),
+        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       debugPrint('Error cancelling order: $e');
@@ -304,8 +296,7 @@ class FirestoreService {
     }
   }
 
-  /// STREAM - Theo dõi thay đổi của một đơn hàng (Real-time)
-  /// Dùng cho Chat 3 người để update tình trạng đơn
+  /// Watch a single order in real time.
   Stream<DeliveryOrder?> watchOrder(String orderId) {
     if (!isFirebaseReady) {
       debugPrint(
@@ -326,37 +317,60 @@ class FirestoreService {
 
   // ===== USER OPERATIONS =====
 
-  /// CREATE/UPDATE - Lưu hoặc cập nhật profile người dùng
+  /// Create or update a user profile.
   Future<void> saveUserProfile({
     required String userId,
     required String name,
     required String email,
     required bool isVerified,
+    String? accountId,
     String? avatarUrl,
     String? phone,
+    String? address,
+    String? birthday,
     double? rating,
+    int? ratingCount,
+    double? ratingSum,
     int? totalDeliveries,
   }) async {
     try {
-      await _firestore.collection(usersCollection).doc(userId).set({
+      final data = <String, dynamic>{
         'id': userId,
+        'accountId': accountId,
         'name': name,
         'email': email,
         'phone': phone,
+        'address': address,
+        'birthday': birthday,
         'avatarUrl': avatarUrl,
         'isVerified': isVerified,
-        'rating': rating ?? 0.0,
-        'totalDeliveries': totalDeliveries ?? 0,
-        'createdAt': Timestamp.now(),
         'updatedAt': Timestamp.now(),
-      }, SetOptions(merge: true));
+      };
+
+      if (rating != null) {
+        data['rating'] = rating;
+      }
+      if (ratingCount != null) {
+        data['ratingCount'] = ratingCount;
+      }
+      if (ratingSum != null) {
+        data['ratingSum'] = ratingSum;
+      }
+      if (totalDeliveries != null) {
+        data['totalDeliveries'] = totalDeliveries;
+      }
+
+      await _firestore
+          .collection(usersCollection)
+          .doc(userId)
+          .set(data, SetOptions(merge: true));
     } catch (e) {
       debugPrint('Error saving user profile: $e');
       rethrow;
     }
   }
 
-  /// READ - Lấy profile người dùng
+  /// Read a user profile.
   Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
       final doc = await _firestore
@@ -375,12 +389,111 @@ class FirestoreService {
     }
   }
 
+  /// Read the rating count stored on the user document.
+  Future<int> getUserRatingCount(String userId) async {
+    try {
+      final normalizedUserId = userId.trim();
+      if (normalizedUserId.isEmpty) {
+        return 0;
+      }
+
+      final doc = await _firestore
+          .collection(usersCollection)
+          .doc(normalizedUserId)
+          .get();
+
+      if (!doc.exists) {
+        return 0;
+      }
+
+      final data = doc.data() ?? <String, dynamic>{};
+      return (data['ratingCount'] as num?)?.toInt() ?? 0;
+    } catch (e) {
+      debugPrint('Error getting user rating count: $e');
+      return 0;
+    }
+  }
+
+  /// Read a user profile by account code.
+  Future<Map<String, dynamic>?> getUserProfileByAccountId(
+    String accountId,
+  ) async {
+    try {
+      final snapshot = await _firestore
+          .collection(usersCollection)
+          .where('accountId', isEqualTo: accountId)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        return null;
+      }
+
+      final doc = snapshot.docs.first;
+      return <String, dynamic>{'id': doc.id, ...doc.data()};
+    } catch (e) {
+      debugPrint('Error getting user profile by accountId: $e');
+      return null;
+    }
+  }
+
+  /// Check if a username already exists.
+  Future<bool> isUserNameTaken(String name) async {
+    try {
+      final snapshot = await _firestore
+          .collection(usersCollection)
+          .where('name', isEqualTo: name)
+          .limit(1)
+          .get();
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error checking username: $e');
+      return false;
+    }
+  }
+
+  /// Save bank account data.
+  Future<void> saveUserBankAccount({
+    required String userId,
+    required String accountNumber,
+    required String bankName,
+  }) async {
+    try {
+      await _firestore.collection(usersCollection).doc(userId).set({
+        'bankAccountNumber': accountNumber,
+        'bankName': bankName,
+        'bankUpdatedAt': Timestamp.now(),
+        'updatedAt': Timestamp.now(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving bank account: $e');
+      rethrow;
+    }
+  }
+
+  /// Save verification image.
+  Future<void> saveUserVerification({
+    required String userId,
+    required String imageUrl,
+  }) async {
+    try {
+      await _firestore.collection(usersCollection).doc(userId).set({
+        'verificationImageUrl': imageUrl,
+        'verificationStatus': 'pending',
+        'verificationSubmittedAt': Timestamp.now(),
+        'verificationUpdatedAt': Timestamp.now(),
+        'isVerified': false,
+        'updatedAt': Timestamp.now(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error saving verification: $e');
+      rethrow;
+    }
+  }
+
   // ===== MESSAGE OPERATIONS =====
 
-  /// CREATE - Gửi tin nhắn trong cuộc trò chuyện 3 người
-  /// [orderId] ID của đơn hàng
-  /// [senderId] ID của người gửi
-  /// [message] nội dung tin nhắn
+  /// Send a chat message.
   Future<void> sendMessage({
     required String orderId,
     required String senderId,
@@ -406,9 +519,7 @@ class FirestoreService {
     }
   }
 
-  /// READ - Lấy các tin nhắn của một đơn hàng
-  /// [orderId] ID của đơn hàng
-  /// [limit] số lượng tin nhắn muốn lấy (mặc định 50)
+  /// Read chat messages.
   Future<List<Map<String, dynamic>>> getMessages(
     String orderId, {
     int limit = 50,
@@ -429,11 +540,11 @@ class FirestoreService {
           .toList();
     } catch (e) {
       debugPrint('Error getting messages: $e');
-      return [];
+      return <Map<String, dynamic>>[];
     }
   }
 
-  /// STREAM - Theo dõi tin nhắn real-time
+  /// Watch chat messages in real time.
   Stream<List<Map<String, dynamic>>> watchMessages(String orderId) {
     if (!isFirebaseReady) {
       debugPrint(
@@ -455,12 +566,7 @@ class FirestoreService {
 
   // ===== RATING OPERATIONS =====
 
-  /// CREATE - Lưu đánh giá cho người dùng
-  /// [orderId] ID của đơn hàng
-  /// [ratedUserId] ID của người được đánh giá
-  /// [raterUserId] ID của người đánh giá
-  /// [rating] số sao (1-5)
-  /// [comment] bình luận
+  /// Save a rating and update the target user's average directly.
   Future<void> saveRating({
     required String orderId,
     required String ratedUserId,
@@ -469,105 +575,95 @@ class FirestoreService {
     String? comment,
   }) async {
     try {
+      final normalizedOrderId = orderId.trim();
+      final normalizedRatedUserId = ratedUserId.trim();
+      final normalizedRaterUserId = raterUserId.trim();
+      if (normalizedOrderId.isEmpty ||
+          normalizedRatedUserId.isEmpty ||
+          normalizedRaterUserId.isEmpty) {
+        throw ArgumentError('Thiếu thông tin đánh giá.');
+      }
+      if (rating < 1 || rating > 5) {
+        throw ArgumentError('Điểm đánh giá phải nằm trong khoảng từ 1 đến 5.');
+      }
+
       final ratingRef = _firestore
           .collection(ordersCollection)
-          .doc(orderId)
+          .doc(normalizedOrderId)
           .collection(ratingsCollection)
-          .doc();
+          .doc(normalizedRaterUserId);
 
-      await ratingRef.set({
-        'orderId': orderId,
-        'ratedUserId': ratedUserId,
-        'raterUserId': raterUserId,
-        'rating': rating,
-        'comment': comment,
-        'createdAt': Timestamp.now(),
+      final userRef = _firestore
+          .collection(usersCollection)
+          .doc(normalizedRatedUserId);
+
+      await _firestore.runTransaction((transaction) async {
+        final existingRatingSnapshot = await transaction.get(ratingRef);
+        final userSnapshot = await transaction.get(userRef);
+
+        final existingRatingData = existingRatingSnapshot.data();
+        final previousRating = (existingRatingData?['rating'] as num?)
+            ?.toDouble();
+        final createdAt = existingRatingSnapshot.exists
+            ? (existingRatingData?['createdAt'] as Timestamp?) ??
+                  Timestamp.now()
+            : Timestamp.now();
+
+        final userData = userSnapshot.data() ?? <String, dynamic>{};
+        final hasRatingStats =
+            userData.containsKey('ratingCount') ||
+            userData.containsKey('ratingSum');
+        final currentCount = (userData['ratingCount'] as num?)?.toInt() ?? 0;
+        final currentSum =
+            (userData['ratingSum'] as num?)?.toDouble() ??
+            ((userData['rating'] as num?)?.toDouble() ?? 0.0) * currentCount;
+
+        double nextSum;
+        int nextCount;
+
+        if (!hasRatingStats || currentCount <= 0) {
+          nextCount = 1;
+          nextSum = rating;
+        } else if (previousRating == null) {
+          nextCount = currentCount + 1;
+          nextSum = currentSum + rating;
+        } else {
+          nextCount = currentCount;
+          nextSum = currentSum + rating - previousRating;
+        }
+
+        final nextAverage = nextCount > 0 ? nextSum / nextCount : rating;
+
+        transaction.set(ratingRef, {
+          'orderId': normalizedOrderId,
+          'ratedUserId': normalizedRatedUserId,
+          'raterUserId': normalizedRaterUserId,
+          'rating': rating,
+          'comment': comment,
+          'createdAt': createdAt,
+          'updatedAt': Timestamp.now(),
+        });
+
+        transaction.set(userRef, {
+          'rating': nextAverage,
+          'ratingCount': nextCount,
+          'ratingSum': nextSum,
+          'updatedAt': Timestamp.now(),
+        }, SetOptions(merge: true));
       });
-
-      // Cập nhật điểm rating TB cho người được đánh giá
-      await _updateUserAverageRating(ratedUserId);
     } catch (e) {
       debugPrint('Error saving rating: $e');
       rethrow;
     }
   }
 
-  /// UPDATE - Cập nhật điểm rating trung bình của người dùng
-  Future<void> _updateUserAverageRating(String userId) async {
-    try {
-      // Lấy tất cả ratings của user này
-      final ratingsSnapshot = await _firestore
-          .collectionGroup(ratingsCollection)
-          .where('ratedUserId', isEqualTo: userId)
-          .get();
-
-      if (ratingsSnapshot.docs.isEmpty) {
-        return;
-      }
-
-      // Tính trung bình
-      final ratings = ratingsSnapshot.docs
-          .map((doc) => (doc.data()['rating'] as num).toDouble())
-          .toList();
-
-      final averageRating = ratings.reduce((a, b) => a + b) / ratings.length;
-
-      // Cập nhật vào user profile
-      await _firestore.collection(usersCollection).doc(userId).update({
-        'rating': averageRating,
-      });
-    } catch (e) {
-      debugPrint('Error updating user average rating: $e');
-    }
-  }
-
   // ===== HELPER METHODS =====
 
-  /// Chuyển đổi Firestore Document thành DeliveryOrder
+  /// Convert a Firestore document to an order model.
   DeliveryOrder _mapDocToOrder(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? {};
-
-    return DeliveryOrder(
-      id: data['id'] ?? '',
-      title: data['title'] ?? '',
-      description: data['description'] ?? '',
-      imageUrl: data['imageUrl'] ?? '',
-      senderId: data['senderId'] ?? '',
-      receiverId: data['receiverId'] ?? '',
-      carrierId: data['carrierId'],
-      createdBy: data['createdBy'] ?? '',
-      status: _parseOrderStatus(data['status'] ?? 'waitingCarrier'),
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      deadlineAt:
-          (data['deadlineAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      senderLocation: data['senderLocation'] != null
-          ? Location.fromMap(data['senderLocation'] as Map<String, dynamic>)
-          : Location(latitude: 0, longitude: 0),
-      receiverLocation: data['receiverLocation'] != null
-          ? Location.fromMap(data['receiverLocation'] as Map<String, dynamic>)
-          : Location(latitude: 0, longitude: 0),
-      pickupLocation: data['pickupLocation'] != null
-          ? Location.fromMap(data['pickupLocation'] as Map<String, dynamic>)
-          : null,
-      deliveryLocation: data['deliveryLocation'] != null
-          ? Location.fromMap(data['deliveryLocation'] as Map<String, dynamic>)
-          : null,
+    return DeliveryOrder.fromMap(
+      doc.data() ?? <String, dynamic>{},
+      fallbackId: doc.id,
     );
-  }
-
-  /// Parse status string thành OrderStatus enum
-  OrderStatus _parseOrderStatus(String status) {
-    switch (status) {
-      case 'waitingCarrier':
-        return OrderStatus.waitingCarrier;
-      case 'waitingDelivery':
-        return OrderStatus.waitingDelivery;
-      case 'completed':
-        return OrderStatus.completed;
-      case 'cancelled':
-        return OrderStatus.cancelled;
-      default:
-        return OrderStatus.waitingCarrier;
-    }
   }
 }

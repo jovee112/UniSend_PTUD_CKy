@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../services/storage_service.dart';
+
 class OrderCardAction {
   const OrderCardAction({
     required this.label,
@@ -16,7 +18,7 @@ class OrderCardAction {
   final bool isDestructive;
 }
 
-class OrderCard extends StatelessWidget {
+class OrderCard extends StatefulWidget {
   const OrderCard({
     super.key,
     required this.title,
@@ -45,6 +47,45 @@ class OrderCard extends StatelessWidget {
   final List<OrderCardAction> actions;
 
   @override
+  State<OrderCard> createState() => _OrderCardState();
+}
+
+class _OrderCardState extends State<OrderCard> {
+  final StorageService _storageService = StorageService();
+  late Future<String?> _resolvedImageUrlFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolvedImageUrlFuture = _resolveImageUrl();
+  }
+
+  @override
+  void didUpdateWidget(covariant OrderCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _resolvedImageUrlFuture = _resolveImageUrl();
+    }
+  }
+
+  Future<String?> _resolveImageUrl() {
+    return _storageService.resolveStoredImageUrl(widget.imageUrl);
+  }
+
+  Widget _buildImagePlaceholder(ColorScheme colorScheme) {
+    return ColoredBox(
+      color: colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: colorScheme.onSurfaceVariant,
+          size: 26,
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -69,19 +110,23 @@ class OrderCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: statusColor.withAlpha(30),
+                          color: widget.statusColor.withAlpha(30),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(statusIcon, size: 14, color: statusColor),
+                            Icon(
+                              widget.statusIcon,
+                              size: 14,
+                              color: widget.statusColor,
+                            ),
                             const SizedBox(width: 6),
                             Text(
-                              statusText,
+                              widget.statusText,
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
-                                    color: statusColor,
+                                    color: widget.statusColor,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.2,
                                   ),
@@ -91,12 +136,12 @@ class OrderCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        title,
+                        widget.title,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        description,
+                        widget.description,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 12),
@@ -104,9 +149,12 @@ class OrderCard extends StatelessWidget {
                         children: [
                           const Icon(Icons.schedule, size: 18),
                           const SizedBox(width: 6),
-                          Text(
-                            deadline,
-                            style: Theme.of(context).textTheme.bodySmall,
+                          Expanded(
+                            child: Text(
+                              widget.deadline,
+                              softWrap: true,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                           ),
                         ],
                       ),
@@ -119,18 +167,22 @@ class OrderCard extends StatelessWidget {
                   child: SizedBox(
                     width: 72,
                     height: 72,
-                    child: Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return ColoredBox(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Center(
-                            child: Text(
-                              'Ảnh lỗi',
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                          ),
+                    child: FutureBuilder<String?>(
+                      future: _resolvedImageUrlFuture,
+                      builder: (context, snapshot) {
+                        final resolvedUrl = snapshot.data?.trim();
+                        if (snapshot.connectionState != ConnectionState.done ||
+                            resolvedUrl == null ||
+                            resolvedUrl.isEmpty) {
+                          return _buildImagePlaceholder(colorScheme);
+                        }
+
+                        return Image.network(
+                          resolvedUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildImagePlaceholder(colorScheme);
+                          },
                         );
                       },
                     ),
@@ -138,27 +190,29 @@ class OrderCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (summaryText != null && summaryText!.trim().isNotEmpty) ...[
+            if (widget.summaryText != null &&
+                widget.summaryText!.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: (summaryColor ?? colorScheme.secondary).withAlpha(26),
+                  color: (widget.summaryColor ?? colorScheme.secondary)
+                      .withAlpha(26),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      summaryIcon,
+                      widget.summaryIcon,
                       size: 18,
-                      color: summaryColor ?? colorScheme.secondary,
+                      color: widget.summaryColor ?? colorScheme.secondary,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        summaryText!,
+                        widget.summaryText!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -171,13 +225,13 @@ class OrderCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (actions.isNotEmpty) ...[
+            if (widget.actions.isNotEmpty) ...[
               const SizedBox(height: 14),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 alignment: WrapAlignment.end,
-                children: actions.map((action) {
+                children: widget.actions.map((action) {
                   if (action.isDestructive) {
                     return FilledButton.tonalIcon(
                       onPressed: action.isEnabled ? action.onPressed : null,

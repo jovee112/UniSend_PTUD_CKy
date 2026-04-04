@@ -34,8 +34,13 @@ class OrderService {
     });
   }
 
-  Future<void> acceptOrder(String orderId, String currentUserId) async {
+  Future<void> acceptOrder(
+    String orderId,
+    String currentUserId, {
+    String? currentAccountId,
+  }) async {
     final actorId = currentUserId.trim();
+    final actorAccountId = currentAccountId?.trim();
     if (actorId.isEmpty) {
       throw const OrderActionException('Thiếu thông tin người dùng hiện tại.');
     }
@@ -74,6 +79,8 @@ class OrderService {
       transaction.update(orderRef, {
         'carrier_id': actorId,
         'carrierId': actorId,
+        if (actorAccountId != null && actorAccountId.isNotEmpty)
+          'carrierAccountId': actorAccountId,
         'status': OrderStatus.waitingDelivery.name,
         'updated_at': now,
         'updatedAt': now,
@@ -108,6 +115,7 @@ class OrderService {
     }
 
     final orderRef = _ordersRef.doc(orderId);
+    final userRef = _firestore.collection('users').doc(actorId);
 
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(orderRef);
@@ -133,14 +141,77 @@ class OrderService {
         'updated_at': now,
         'updatedAt': now,
       });
+      transaction.set(userRef, {
+        'totalDeliveries': FieldValue.increment(1),
+        'lastDeliveryAt': now,
+        'updatedAt': now,
+      }, SetOptions(merge: true));
     });
   }
 
-  Future<void> cancelOrder(String orderId, String currentUserId) async {
+  Future<void> updateDeadline(
+    String orderId,
+    String currentUserId,
+    DateTime deadlineAt,
+  ) async {
     final actorId = currentUserId.trim();
     if (actorId.isEmpty) {
       throw const OrderActionException('Thiếu thông tin người dùng hiện tại.');
     }
+    if (!deadlineAt.isAfter(DateTime.now())) {
+      throw const OrderActionException(
+        'Hạn giao phải lớn hơn thời điểm hiện tại.',
+      );
+    }
+
+    final orderRef = _ordersRef.doc(orderId);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(orderRef);
+      if (!snapshot.exists) {
+        throw const OrderActionException('Không tìm thấy đơn hàng.');
+      }
+
+      final order = OrderModel.fromFirestore(snapshot);
+      final actors = OrderPolicy.resolveActors(
+        order: order,
+        currentUserId: actorId,
+      );
+
+      if (order.status != OrderStatus.waitingDelivery) {
+        throw const OrderActionException(
+          'Chỉ có thể set hạn giao khi đơn đang chờ giao hàng.',
+        );
+      }
+      if (!actors.isCarrier) {
+        throw const OrderActionException(
+          'Chỉ người trung gian đang giao đơn mới có thể set hạn giao.',
+        );
+      }
+
+      final timestamp = Timestamp.fromDate(deadlineAt);
+      final now = Timestamp.now();
+      transaction.update(orderRef, {
+        'deadline': timestamp,
+        'deadlineAt': timestamp,
+        'deadline_at': timestamp,
+        'updated_at': now,
+        'updatedAt': now,
+      });
+    });
+  }
+
+  Future<void> cancelOrder(
+    String orderId,
+    String currentUserId, {
+    String? reason,
+  }) async {
+    final actorId = currentUserId.trim();
+    if (actorId.isEmpty) {
+      throw const OrderActionException('Thiếu thông tin người dùng hiện tại.');
+    }
+
+    final normalizedReason = reason?.trim();
 
     final orderRef = _ordersRef.doc(orderId);
 
@@ -175,6 +246,9 @@ class OrderService {
       final now = Timestamp.now();
       transaction.update(orderRef, {
         'status': OrderStatus.cancelled.name,
+        'cancelReason': normalizedReason == null || normalizedReason.isEmpty
+            ? null
+            : normalizedReason,
         'updated_at': now,
         'updatedAt': now,
       });

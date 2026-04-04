@@ -19,25 +19,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _auth = AuthService();
   final _firestoreService = FirestoreService();
 
+  bool _isValidGmail(String email) {
+    final normalized = email.trim().toLowerCase();
+    return RegExp(r'^[a-z0-9._%+-]+@gmail\.com$').hasMatch(normalized);
+  }
+
   void _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
     try {
-      final credential = await _auth.register(
-        _emailCtrl.text.trim(),
-        _pwCtrl.text,
-      );
+      final email = _emailCtrl.text.trim().toLowerCase();
+      if (!_isValidGmail(email)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email phải đúng định dạng @gmail.com')),
+        );
+        return;
+      }
+
+      setState(() => _loading = true);
+
+      final inferredName = email.split('@').first;
+      final isTaken = await _firestoreService.isUserNameTaken(inferredName);
+      if (isTaken) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tên tài khoản đã tồn tại')),
+        );
+        return;
+      }
+
+      final credential = await _auth.register(email, _pwCtrl.text);
 
       final user = credential.user;
       if (user != null) {
-        final email = _emailCtrl.text.trim();
-        final inferredName = email.contains('@')
-            ? email.split('@').first
-            : 'user_${user.uid.substring(0, 6)}';
+        final inferredName = email.split('@').first;
 
         await _firestoreService.saveUserProfile(
           userId: user.uid,
           name: inferredName,
+          accountId: inferredName,
           email: email,
           isVerified: false,
         );
@@ -82,9 +103,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         controller: _emailCtrl,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(labelText: 'Email'),
-                        validator: (v) => (v == null || v.isEmpty)
-                            ? 'Vui lòng nhập email'
-                            : null,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Vui lòng nhập email';
+                          }
+                          if (!_isValidGmail(v)) {
+                            return 'Email phải đúng định dạng @gmail.com';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 12),
                       TextFormField(

@@ -7,8 +7,10 @@ class UserSessionService extends ChangeNotifier {
           : initialUserId.trim();
 
   String _currentUserId;
+  String _currentAccountId = '';
 
   String get currentUserId => _currentUserId;
+  String get currentAccountId => _currentAccountId;
 
   void setCurrentUserId(String userId) {
     final normalizedUserId = userId.trim();
@@ -17,6 +19,16 @@ class UserSessionService extends ChangeNotifier {
     }
 
     _currentUserId = normalizedUserId;
+    notifyListeners();
+  }
+
+  void setCurrentAccountId(String accountId) {
+    final normalizedAccountId = accountId.trim();
+    if (normalizedAccountId == _currentAccountId) {
+      return;
+    }
+
+    _currentAccountId = normalizedAccountId;
     notifyListeners();
   }
 }

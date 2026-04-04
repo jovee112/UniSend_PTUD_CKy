@@ -31,6 +31,7 @@ class OrderProvider extends ChangeNotifier {
   Timer? _deadlineSyncTicker;
 
   List<OrderModel> _orders = const <OrderModel>[];
+  List<OrderModel> _allOrders = const <OrderModel>[];
   bool _isLoading = true;
   String? _error;
   DateTime _now = DateTime.now();
@@ -54,7 +55,8 @@ class OrderProvider extends ChangeNotifier {
 
     _ordersSubscription = _orderService.watchOrders().listen(
       (orders) {
-        _orders = orders;
+        _allOrders = orders;
+        _orders = _filterOrdersForCurrentUser(orders);
         _isLoading = false;
         _error = null;
         notifyListeners();
@@ -65,6 +67,38 @@ class OrderProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+  }
+
+  List<OrderModel> _filterOrdersForCurrentUser(List<OrderModel> orders) {
+    final currentUserId = _userSessionService.currentUserId.trim();
+    final currentAccountId = _userSessionService.currentAccountId.trim();
+    if (currentUserId.isEmpty) {
+      return const <OrderModel>[];
+    }
+
+    if (currentAccountId.isNotEmpty) {
+      return orders
+          .where((order) {
+            return (order.senderAccountId?.trim() ?? '') == currentAccountId ||
+                (order.receiverAccountId?.trim() ?? '') == currentAccountId ||
+                (order.createdByAccountId?.trim() ?? '') == currentAccountId ||
+                (order.carrierAccountId?.trim() ?? '') == currentAccountId ||
+                order.senderId.trim() == currentUserId ||
+                order.receiverId.trim() == currentUserId ||
+                order.createdBy.trim() == currentUserId ||
+                (order.carrierId?.trim() ?? '') == currentUserId;
+          })
+          .toList(growable: false);
+    }
+
+    return orders
+        .where((order) {
+          return order.senderId.trim() == currentUserId ||
+              order.receiverId.trim() == currentUserId ||
+              order.createdBy.trim() == currentUserId ||
+              (order.carrierId?.trim() ?? '') == currentUserId;
+        })
+        .toList(growable: false);
   }
 
   Future<void> stopListening() async {
@@ -79,9 +113,14 @@ class OrderProvider extends ChangeNotifier {
   }
 
   Future<void> acceptOrder(String orderId, String currentUserId) async {
+    final currentAccountId = _userSessionService.currentAccountId.trim();
     await _runAction(
       orderId,
-      () => _orderService.acceptOrder(orderId, currentUserId),
+      () => _orderService.acceptOrder(
+        orderId,
+        currentUserId,
+        currentAccountId: currentAccountId,
+      ),
     );
   }
 
@@ -92,10 +131,25 @@ class OrderProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> cancelOrder(String orderId, String currentUserId) async {
+  Future<void> updateDeadline(
+    String orderId,
+    String currentUserId,
+    DateTime deadlineAt,
+  ) async {
     await _runAction(
       orderId,
-      () => _orderService.cancelOrder(orderId, currentUserId),
+      () => _orderService.updateDeadline(orderId, currentUserId, deadlineAt),
+    );
+  }
+
+  Future<void> cancelOrder(
+    String orderId,
+    String currentUserId, {
+    String? reason,
+  }) async {
+    await _runAction(
+      orderId,
+      () => _orderService.cancelOrder(orderId, currentUserId, reason: reason),
     );
   }
 
@@ -119,6 +173,7 @@ class OrderProvider extends ChangeNotifier {
   }
 
   void _onUserChanged() {
+    _orders = _filterOrdersForCurrentUser(_allOrders);
     notifyListeners();
   }
 

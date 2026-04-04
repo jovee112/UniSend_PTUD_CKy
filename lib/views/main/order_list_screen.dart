@@ -25,15 +25,88 @@ class _OrderCardMessage {
   final Color color;
 }
 
+class _CancelOrderDialog extends StatefulWidget {
+  const _CancelOrderDialog({required this.orderId});
+
+  final String orderId;
+
+  @override
+  State<_CancelOrderDialog> createState() => _CancelOrderDialogState();
+}
+
+class _CancelOrderDialogState extends State<_CancelOrderDialog> {
+  final TextEditingController _reasonController = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  void _submitReason() {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập lý do hủy đơn.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(reason);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Hủy đơn'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Bạn có chắc chắn muốn hủy đơn ${widget.orderId}?'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reasonController,
+              minLines: 2,
+              maxLines: 4,
+              textInputAction: TextInputAction.newline,
+              decoration: const InputDecoration(
+                labelText: 'Lý do hủy đơn',
+                hintText: 'Nhập lý do hủy đơn',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: const Text('Không'),
+        ),
+        FilledButton.tonal(
+          onPressed: _submitReason,
+          child: const Text('Xác nhận hủy'),
+        ),
+      ],
+    );
+  }
+}
+
 class OrderListScreen extends StatefulWidget {
   const OrderListScreen({
     super.key,
     required this.orderService,
     required this.userSessionService,
+    this.onOpenChat,
   });
 
   final OrderService orderService;
   final UserSessionService userSessionService;
+  final Future<void> Function(String roomId)? onOpenChat;
 
   @override
   State<OrderListScreen> createState() => _OrderListScreenState();
@@ -49,7 +122,6 @@ class _OrderListScreenState extends State<OrderListScreen>
   ];
 
   late final TabController _tabController;
-  final TextEditingController _switchUserController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
 
   @override
@@ -61,102 +133,12 @@ class _OrderListScreenState extends State<OrderListScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _switchUserController.dispose();
     super.dispose();
   }
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
-
-  Set<String> _knownUserIdsFromOrders(
-    String currentUserId,
-    List<DeliveryOrder> orders,
-  ) {
-    final ids = <String>{
-      if (currentUserId.trim().isNotEmpty) currentUserId.trim(),
-    };
-
-    for (final order in orders) {
-      ids.add(order.senderId);
-      ids.add(order.receiverId);
-      ids.add(order.createdBy);
-      if (order.carrierId != null && order.carrierId!.trim().isNotEmpty) {
-        ids.add(order.carrierId!.trim());
-      }
-    }
-
-    return ids;
-  }
-
-  Future<void> _showSwitchUserDialog(
-    String currentUserId,
-    List<DeliveryOrder> orders,
-  ) async {
-    _switchUserController.text = currentUserId;
-
-    final knownIds = _knownUserIdsFromOrders(currentUserId, orders).toList()
-      ..sort();
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Đổi tài khoản xem thử'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _switchUserController,
-                  decoration: const InputDecoration(labelText: 'Mã tài khoản'),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Gợi ý từ danh sách đơn:',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: knownIds
-                      .map(
-                        (id) => ActionChip(
-                          label: Text(id),
-                          onPressed: () {
-                            _switchUserController.text = id;
-                          },
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Đóng'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final newUserId = _switchUserController.text.trim();
-                if (newUserId.isEmpty) {
-                  _showMessage('Mã tài khoản không được để trống.');
-                  return;
-                }
-                widget.userSessionService.setCurrentUserId(newUserId);
-                Navigator.of(context).pop();
-              },
-              child: const Text('Áp dụng'),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -209,6 +191,13 @@ class _OrderListScreenState extends State<OrderListScreen>
   }
 
   String _buildCountdownText(DeliveryOrder order, DateTime now) {
+    if (order.status == OrderStatus.completed) {
+      return 'Đã hoàn thành';
+    }
+    if (order.status == OrderStatus.cancelled) {
+      return 'Đã hủy';
+    }
+
     final diff = order.deadlineAt.difference(now);
     if (diff.isNegative) {
       final overdue = now.difference(order.deadlineAt);
@@ -255,9 +244,9 @@ class _OrderListScreenState extends State<OrderListScreen>
     final toLabel = _formatLocationForCard(order.receiverLocation);
     final distanceKm = order.senderLocation.distanceTo(order.receiverLocation);
 
-    return 'Lay hang: $fromLabel\n'
-        'Giao hang: $toLabel\n'
-        'Khoang cach du kien: ${distanceKm.toStringAsFixed(2)} km';
+    return 'Lấy hàng: $fromLabel\n'
+        'Giao hàng: $toLabel\n'
+        'Khoảng cách dự kiến: ${distanceKm.toStringAsFixed(2)} km';
   }
 
   String? _firstDeniedReason(OrderPermissions permissions) {
@@ -366,9 +355,23 @@ class _OrderListScreenState extends State<OrderListScreen>
     }
   }
 
+  String? _buildCancelReasonText(DeliveryOrder order) {
+    if (order.status != OrderStatus.cancelled) {
+      return null;
+    }
+
+    final reason = order.cancelReason?.trim();
+    if (reason == null || reason.isEmpty) {
+      return 'Lý do hủy: chưa có thông tin.';
+    }
+
+    return 'Lý do hủy: $reason';
+  }
+
   Future<void> _acceptOrder(DeliveryOrder order, String currentUserId) async {
     try {
       await context.read<OrderProvider>().acceptOrder(order.id, currentUserId);
+      await widget.onOpenChat?.call(order.id);
       _showMessage('Đã nhận đơn thành công.');
     } catch (e) {
       _showMessage('Không thể nhận đơn: $e');
@@ -387,9 +390,160 @@ class _OrderListScreenState extends State<OrderListScreen>
     }
   }
 
+  Future<void> _setDeadline(DeliveryOrder order, String currentUserId) async {
+    final now = DateTime.now();
+    final fallbackInitial = order.deadlineAt.isAfter(now)
+        ? order.deadlineAt
+        : now.add(const Duration(hours: 4));
+    final firstDate = DateTime(now.year, now.month, now.day);
+    final lastDate = DateTime(now.year + 1, now.month, now.day);
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: fallbackInitial,
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+    if (!mounted || pickedDate == null) {
+      return;
+    }
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(fallbackInitial),
+    );
+    if (!mounted || pickedTime == null) {
+      return;
+    }
+
+    final deadlineAt = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    if (!deadlineAt.isAfter(now)) {
+      _showMessage('Hạn giao phải lớn hơn thời điểm hiện tại.');
+      return;
+    }
+
+    try {
+      await context.read<OrderProvider>().updateDeadline(
+        order.id,
+        currentUserId,
+        deadlineAt,
+      );
+      _showMessage('Đã cập nhật hạn giao đến ${_formatDeadline(deadlineAt)}.');
+    } catch (e) {
+      _showMessage('Không thể đặt hạn giao: $e');
+    }
+  }
+
+  Future<void> _showRateCarrierDialog(
+    DeliveryOrder order,
+    String currentUserId,
+  ) async {
+    final carrierId = order.carrierId?.trim();
+    if (carrierId == null || carrierId.isEmpty) {
+      _showMessage('Không tìm thấy người trung gian để đánh giá.');
+      return;
+    }
+
+    int selectedRating = 5;
+    final rating = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Đánh giá người giao'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Chọn số sao cho người trung gian đã giao đơn này.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: selectedRating,
+                      decoration: const InputDecoration(labelText: 'Số sao'),
+                      items: List.generate(
+                        5,
+                        (index) => DropdownMenuItem<int>(
+                          value: index + 1,
+                          child: Text('${index + 1} sao'),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() => selectedRating = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop(selectedRating),
+                  child: const Text('Gửi đánh giá'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || rating == null) {
+      return;
+    }
+
+    try {
+      await _firestoreService.saveRating(
+        orderId: order.id,
+        ratedUserId: carrierId,
+        raterUserId: currentUserId,
+        rating: rating.toDouble(),
+      );
+      _showMessage('Đã gửi đánh giá ${rating.toString()} sao.');
+    } catch (e) {
+      _showMessage('Không thể gửi đánh giá: $e');
+    }
+  }
+
+  Future<String?> _showCancelOrderDialog(DeliveryOrder order) async {
+    final reason = await showDialog<String?>(
+      context: context,
+      builder: (dialogContext) {
+        return _CancelOrderDialog(orderId: order.id);
+      },
+    );
+    return reason;
+  }
+
   Future<void> _cancelOrder(DeliveryOrder order, String currentUserId) async {
     try {
-      await context.read<OrderProvider>().cancelOrder(order.id, currentUserId);
+      final orderProvider = context.read<OrderProvider>();
+      final reason = await _showCancelOrderDialog(order);
+      if (reason == null) {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      await orderProvider.cancelOrder(order.id, currentUserId, reason: reason);
       _showMessage('Đã hủy đơn thành công.');
     } catch (e) {
       _showMessage('Không thể hủy đơn: $e');
@@ -469,6 +623,35 @@ class _OrderListScreenState extends State<OrderListScreen>
                   !orderProvider.isOrderBusy(order.id)
               ? () => _markDelivered(order, currentUserId)
               : null,
+        ),
+      );
+    }
+
+    final canSetDeadline =
+        actors.isCarrier && order.status == OrderStatus.waitingDelivery;
+    if (canSetDeadline) {
+      actions.add(
+        OrderCardAction(
+          label: 'Đặt hạn giao',
+          icon: Icons.event_available_outlined,
+          isEnabled: !orderProvider.isOrderBusy(order.id),
+          onPressed: !orderProvider.isOrderBusy(order.id)
+              ? () => _setDeadline(order, currentUserId)
+              : null,
+        ),
+      );
+    }
+
+    final canRateCarrier =
+        order.status == OrderStatus.completed &&
+        actors.isReceiver &&
+        (order.carrierId?.trim().isNotEmpty ?? false);
+    if (canRateCarrier) {
+      actions.add(
+        OrderCardAction(
+          label: 'Đánh giá người giao',
+          icon: Icons.star_outline,
+          onPressed: () => _showRateCarrierDialog(order, currentUserId),
         ),
       );
     }
@@ -589,6 +772,13 @@ class _OrderListScreenState extends State<OrderListScreen>
           permissions: permissions,
           scheme: scheme,
         );
+        final cancelReasonText = _buildCancelReasonText(order);
+        var summaryText = order.isLate
+            ? '${cardMessage.text}\nĐơn trễ hạn. Phí giả lập: ${order.lateFee}đ'
+            : cardMessage.text;
+        if (cancelReasonText != null) {
+          summaryText = '$summaryText\n$cancelReasonText';
+        }
 
         return OrderCard(
           title: order.title,
@@ -602,9 +792,7 @@ class _OrderListScreenState extends State<OrderListScreen>
           imageUrl: order.imageUrl,
           summaryIcon: cardMessage.icon,
           summaryColor: cardMessage.color,
-          summaryText: order.isLate
-              ? '${cardMessage.text}\nĐơn trễ hạn. Phí giả lập: ${order.lateFee}đ'
-              : cardMessage.text,
+          summaryText: summaryText,
           actions: _buildActions(
             order,
             permissions,
@@ -643,13 +831,6 @@ class _OrderListScreenState extends State<OrderListScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Đơn hàng'),
-        actions: [
-          IconButton(
-            onPressed: () => _showSwitchUserDialog(currentUserId, orders),
-            icon: const Icon(Icons.manage_accounts_outlined),
-            tooltip: 'Đổi người dùng thử nghiệm',
-          ),
-        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: _tabs.map((status) => Tab(text: _tabLabel(status))).toList(),

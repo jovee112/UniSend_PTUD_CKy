@@ -97,6 +97,25 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> leaveRoom(String roomId) async {
+    final normalizedRoomId = roomId.trim();
+    if (normalizedRoomId.isEmpty || _currentUserId.isEmpty) {
+      throw Exception('Không thể rời phòng chat.');
+    }
+
+    await _chatService.leaveRoom(
+      roomId: normalizedRoomId,
+      userId: _currentUserId,
+    );
+
+    if (_selectedRoomId == normalizedRoomId) {
+      _selectedRoomId = null;
+      _messages = const <ChatMessageModel>[];
+      _messagesLoading = false;
+      notifyListeners();
+    }
+  }
+
   void _bindCurrentUserFromSession() {
     setCurrentUser(_userSessionService.currentUserId);
   }

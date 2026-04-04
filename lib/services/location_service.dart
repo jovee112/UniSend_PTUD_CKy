@@ -199,7 +199,14 @@ class LocationService {
         'https://nominatim.openstreetmap.org/reverse?format=json&lat=$latitude&lon=$longitude&language=vi&zoom=18',
       );
 
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            url,
+            headers: const {
+              'User-Agent': 'UniSend/1.0 (contact: dev@unisend.app)',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
@@ -273,7 +280,14 @@ class LocationService {
         'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(address)}&language=vi&limit=1',
       );
 
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            url,
+            headers: const {
+              'User-Agent': 'UniSend/1.0 (contact: dev@unisend.app)',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final results = jsonDecode(response.body) as List<dynamic>;
