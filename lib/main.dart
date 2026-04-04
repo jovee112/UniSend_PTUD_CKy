@@ -4,6 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'providers/chat_provider.dart';
+import 'providers/order_provider.dart';
+import 'services/chat_service.dart';
 import 'services/order_service.dart';
 import 'services/user_session_service.dart';
 import 'views/auth/login_screen.dart';
@@ -78,6 +82,9 @@ class _MainAppState extends State<MainApp> {
   ThemeMode _themeMode = ThemeMode.light;
   late final UserSessionService _userSessionService;
   late final OrderService _orderService;
+  late final ChatService _chatService;
+  late final OrderProvider _orderProvider;
+  late final ChatProvider _chatProvider;
 
   @override
   void initState() {
@@ -89,6 +96,23 @@ class _MainAppState extends State<MainApp> {
       initialUserId: _resolveInitialUserId(),
     );
     _orderService = OrderService();
+    _chatService = ChatService();
+    _orderProvider = OrderProvider(
+      orderService: _orderService,
+      userSessionService: _userSessionService,
+    );
+    _chatProvider = ChatProvider(
+      chatService: _chatService,
+      userSessionService: _userSessionService,
+    );
+  }
+
+  @override
+  void dispose() {
+    _chatProvider.dispose();
+    _orderProvider.dispose();
+    _userSessionService.dispose();
+    super.dispose();
   }
 
   String _resolveInitialUserId() {
@@ -151,56 +175,67 @@ class _MainAppState extends State<MainApp> {
       );
     }
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: _buildTheme(Brightness.light),
-      darkTheme: _buildTheme(Brightness.dark),
-      themeMode: _themeMode,
-      routes: {
-        '/login': (c) => shouldBypassAuth
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<UserSessionService>.value(
+          value: _userSessionService,
+        ),
+        Provider<OrderService>.value(value: _orderService),
+        Provider<ChatService>.value(value: _chatService),
+        ChangeNotifierProvider<OrderProvider>.value(value: _orderProvider),
+        ChangeNotifierProvider<ChatProvider>.value(value: _chatProvider),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: _buildTheme(Brightness.light),
+        darkTheme: _buildTheme(Brightness.dark),
+        themeMode: _themeMode,
+        routes: {
+          '/login': (c) => shouldBypassAuth
+              ? MainNavigation(
+                  isDarkMode: _themeMode == ThemeMode.dark,
+                  onThemeModeChanged: _onThemeModeChanged,
+                  orderService: _orderService,
+                  userSessionService: _userSessionService,
+                )
+              : LoginScreen(onSignedIn: () => setState(() {})),
+          '/register': (c) => shouldBypassAuth
+              ? MainNavigation(
+                  isDarkMode: _themeMode == ThemeMode.dark,
+                  onThemeModeChanged: _onThemeModeChanged,
+                  orderService: _orderService,
+                  userSessionService: _userSessionService,
+                )
+              : const RegisterScreen(),
+        },
+        home: shouldBypassAuth
             ? MainNavigation(
                 isDarkMode: _themeMode == ThemeMode.dark,
                 onThemeModeChanged: _onThemeModeChanged,
                 orderService: _orderService,
                 userSessionService: _userSessionService,
               )
-            : LoginScreen(onSignedIn: () => setState(() {})),
-        '/register': (c) => shouldBypassAuth
-            ? MainNavigation(
-                isDarkMode: _themeMode == ThemeMode.dark,
-                onThemeModeChanged: _onThemeModeChanged,
-                orderService: _orderService,
-                userSessionService: _userSessionService,
-              )
-            : const RegisterScreen(),
-      },
-      home: shouldBypassAuth
-          ? MainNavigation(
-              isDarkMode: _themeMode == ThemeMode.dark,
-              onThemeModeChanged: _onThemeModeChanged,
-              orderService: _orderService,
-              userSessionService: _userSessionService,
-            )
-          : StreamBuilder<fb.User?>(
-              stream: _auth!.authStateChanges(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (snapshot.hasData) {
-                  _userSessionService.setCurrentUserId(snapshot.data!.uid);
-                  return MainNavigation(
-                    isDarkMode: _themeMode == ThemeMode.dark,
-                    onThemeModeChanged: _onThemeModeChanged,
-                    orderService: _orderService,
-                    userSessionService: _userSessionService,
-                  );
-                }
-                return LoginScreen(onSignedIn: () => setState(() {}));
-              },
-            ),
+            : StreamBuilder<fb.User?>(
+                stream: _auth!.authStateChanges(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasData) {
+                    _userSessionService.setCurrentUserId(snapshot.data!.uid);
+                    return MainNavigation(
+                      isDarkMode: _themeMode == ThemeMode.dark,
+                      onThemeModeChanged: _onThemeModeChanged,
+                      orderService: _orderService,
+                      userSessionService: _userSessionService,
+                    );
+                  }
+                  return LoginScreen(onSignedIn: () => setState(() {}));
+                },
+              ),
+      ),
     );
   }
 }

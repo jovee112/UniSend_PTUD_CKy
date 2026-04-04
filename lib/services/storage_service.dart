@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 
 class StorageService {
   SupabaseClient? _tryGetSupabaseClient() {
@@ -25,10 +25,10 @@ class StorageService {
   }
 
   /// Hàm upload ảnh dùng chung cho toàn bộ dự án
-  /// [file]: File ảnh lấy từ ImagePicker
+  /// [file]: XFile ảnh lấy từ ImagePicker
   /// [isAvatar]: true nếu là ảnh hồ sơ (bucket avatars), false nếu là ảnh đơn hàng (bucket orders)
   Future<String?> uploadImage({
-    required File file,
+    required XFile file,
     bool isAvatar = false,
   }) async {
     try {
@@ -50,16 +50,18 @@ class StorageService {
 
       // 4. Metadata chỉ phục vụ truy vết thao tác upload, không dùng để gán quyền trên order.
       final Map<String, String> metadata = {'uploaded_by': userId};
+      final Uint8List fileBytes = await file.readAsBytes();
 
       // 5. Thực hiện upload lên Supabase Storage kèm metadata
       await supabase.storage
           .from(bucketName)
-          .upload(
+          .uploadBinary(
             path,
-            file,
+            fileBytes,
             fileOptions: FileOptions(
               cacheControl: '3600',
               upsert: false,
+              contentType: 'image/jpeg',
               metadata: metadata,
             ),
           );

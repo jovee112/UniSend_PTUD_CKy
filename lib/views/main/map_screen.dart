@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -885,7 +885,8 @@ class _CreateOrderSheetState extends State<_CreateOrderSheet> {
 
   Location? _senderLocation;
   Location? _receiverLocation;
-  File? _selectedImageFile;
+  XFile? _selectedImageFile;
+  Uint8List? _selectedImageBytes;
 
   @override
   void initState() {
@@ -1053,8 +1054,11 @@ class _CreateOrderSheetState extends State<_CreateOrderSheet> {
         return;
       }
 
+      final bytes = await pickedFile.readAsBytes();
+
       setState(() {
-        _selectedImageFile = File(pickedFile.path);
+        _selectedImageFile = pickedFile;
+        _selectedImageBytes = bytes;
         _hasSelectedImage = true;
       });
     } catch (e) {
@@ -1227,11 +1231,11 @@ class _CreateOrderSheetState extends State<_CreateOrderSheet> {
                         ).colorScheme.surfaceContainerHighest,
                       ),
                       alignment: Alignment.center,
-                      child: _selectedImageFile != null
+                      child: _selectedImageBytes != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.file(
-                                _selectedImageFile!,
+                              child: Image.memory(
+                                _selectedImageBytes!,
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: 150,
