@@ -338,9 +338,24 @@ class FirestoreService {
     int? totalDeliveries,
   }) async {
     try {
+      final normalizedUserId = userId.trim();
+      final normalizedAccountId = accountId?.trim().isEmpty == true
+          ? null
+          : accountId?.trim();
+
+      if (normalizedAccountId != null) {
+        final isTaken = await isAccountIdTaken(
+          normalizedAccountId,
+          excludeUserId: normalizedUserId,
+        );
+        if (isTaken) {
+          throw StateError('Mã tài khoản đã tồn tại.');
+        }
+      }
+
       final data = <String, dynamic>{
-        'id': userId,
-        'accountId': accountId,
+        'id': normalizedUserId,
+        'accountId': normalizedAccountId,
         'name': name,
         'email': email,
         'phone': phone,
@@ -366,7 +381,7 @@ class FirestoreService {
 
       await _firestore
           .collection(usersCollection)
-          .doc(userId)
+          .doc(normalizedUserId)
           .set(data, SetOptions(merge: true));
     } catch (e) {
       debugPrint('Error saving user profile: $e');
@@ -452,6 +467,30 @@ class FirestoreService {
       return snapshot.docs.isNotEmpty;
     } catch (e) {
       debugPrint('Error checking username: $e');
+      return false;
+    }
+  }
+
+  /// Check if an account code already exists for another user.
+  Future<bool> isAccountIdTaken(
+    String accountId, {
+    String? excludeUserId,
+  }) async {
+    try {
+      final normalizedAccountId = accountId.trim();
+      if (normalizedAccountId.isEmpty) {
+        return false;
+      }
+
+      final snapshot = await _firestore
+          .collection(usersCollection)
+          .where('accountId', isEqualTo: normalizedAccountId)
+          .limit(10)
+          .get();
+
+      return snapshot.docs.any((doc) => doc.id != excludeUserId);
+    } catch (e) {
+      debugPrint('Error checking accountId: $e');
       return false;
     }
   }

@@ -444,6 +444,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         birthday: _birthday ?? '',
         formatDate: _formatDate,
         tryParseDate: _tryParseDate,
+        isAccountIdTaken: (accountId) => _firestoreService.isAccountIdTaken(
+          accountId,
+          excludeUserId: user.uid,
+        ),
         isPhoneTaken: (phone) =>
             _firestoreService.isPhoneTaken(phone, excludeUserId: user.uid),
       ),
@@ -939,6 +943,7 @@ class _ProfileEditSheet extends StatefulWidget {
     required this.birthday,
     required this.formatDate,
     required this.tryParseDate,
+    required this.isAccountIdTaken,
     required this.isPhoneTaken,
   });
 
@@ -950,6 +955,7 @@ class _ProfileEditSheet extends StatefulWidget {
   final String birthday;
   final String Function(DateTime) formatDate;
   final DateTime? Function(String) tryParseDate;
+  final Future<bool> Function(String accountId) isAccountIdTaken;
   final Future<bool> Function(String phone) isPhoneTaken;
 
   @override
@@ -964,6 +970,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
   late final TextEditingController _phoneController;
   late final TextEditingController _addressController;
   late final TextEditingController _birthdayController;
+  String? _accountIdDuplicateError;
   String? _phoneDuplicateError;
 
   @override
@@ -1017,6 +1024,25 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
+    }
+
+    final accountId = _accountIdController.text.trim();
+    final isAccountIdTaken = await widget.isAccountIdTaken(accountId);
+    if (!mounted) {
+      return;
+    }
+    if (isAccountIdTaken) {
+      setState(() {
+        _accountIdDuplicateError = 'Mã tài khoản này đã được sử dụng.';
+      });
+      _formKey.currentState!.validate();
+      return;
+    }
+
+    if (_accountIdDuplicateError != null) {
+      setState(() {
+        _accountIdDuplicateError = null;
+      });
     }
 
     final phone = _phoneController.text.trim();
@@ -1086,9 +1112,28 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _accountIdController,
+                onChanged: (value) {
+                  if (_accountIdDuplicateError == null) {
+                    return;
+                  }
+                  setState(() {
+                    _accountIdDuplicateError = null;
+                  });
+                },
                 decoration: const InputDecoration(labelText: 'Mã tài khoản'),
-                validator: (value) =>
-                    _requiredFieldValidator(value, 'mã tài khoản'),
+                validator: (value) {
+                  final requiredError = _requiredFieldValidator(
+                    value,
+                    'mã tài khoản',
+                  );
+                  if (requiredError != null) {
+                    return requiredError;
+                  }
+                  if (_accountIdDuplicateError != null) {
+                    return _accountIdDuplicateError;
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(

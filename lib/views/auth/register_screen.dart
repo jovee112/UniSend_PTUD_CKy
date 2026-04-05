@@ -40,12 +40,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _loading = true);
 
       final inferredName = email.split('@').first;
-      final isTaken = await _firestoreService.isUserNameTaken(inferredName);
+      final isTaken = await _firestoreService.isAccountIdTaken(inferredName);
       if (isTaken) {
         if (!mounted) return;
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tên tài khoản đã tồn tại')),
+          const SnackBar(content: Text('Mã tài khoản đã tồn tại')),
         );
         return;
       }
