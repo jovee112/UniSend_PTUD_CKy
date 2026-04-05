@@ -1,177 +1,179 @@
-# HƯỚNG DẪN SỬ DỤNG TÍNH NĂNG HIỆN TẠI CỦA UNISEND
+# HƯỚNG DẪN SỬ DỤNG VÀ LƯU Ý KHI ĐƯA MÃ NGUỒN LÊN GIT
 
-Tài liệu này hướng dẫn cách sử dụng các tính năng đang có trong ứng dụng theo đúng trạng thái code hiện tại.
+Tài liệu này được viết lại từ cấu trúc và logic hiện tại của project UniSend. Nội dung tập trung vào cách chạy ứng dụng, các chức năng đang có trong code, và đặc biệt là những điểm cần chú ý khi đưa mã nguồn lên Git.
 
-## 1. Tổng quan nhanh
+## 1. Tổng quan project
 
-Ứng dụng hiện có 4 tab chính:
+UniSend là ứng dụng Flutter gồm 4 tab chính:
 
 1. Bản đồ
 2. Đơn hàng
 3. Trò chuyện
 4. Hồ sơ
 
-Các tính năng đang hoạt động thật:
+Các thành phần chính đang dùng trong project:
 
-1. Firebase Auth (đăng nhập, đăng ký bằng email và mật khẩu)
-2. Firestore (lưu đơn, đọc danh sách đơn theo thời gian thực)
-3. Supabase Storage (tải ảnh đơn hàng)
-4. GPS và OpenStreetMap (lấy vị trí, chọn địa chỉ trên bản đồ)
-5. Chat realtime 3 bên theo đơn hàng (sender - carrier - receiver)
-6. Countdown deadline và đánh dấu đơn trễ hạn theo thời gian thực
-
-Các tính năng đang ở mức giao diện mô phỏng:
-
-1. Hồ sơ (nhiều nút vẫn đang hiển thị thông báo UI-only)
-2. Danh sách đơn gần trên tab Bản đồ (đang là dữ liệu mẫu)
+1. Firebase Auth để đăng ký và đăng nhập.
+2. Firestore để lưu hồ sơ, đơn hàng và dữ liệu chat.
+3. Supabase Storage để lưu ảnh đơn hàng và ảnh liên quan.
+4. GPS và OpenStreetMap để lấy vị trí và chọn địa chỉ trên bản đồ.
 
 ## 2. Cách chạy ứng dụng
 
-Chế độ Firebase thật (khuyến nghị):
+### 2.1. Chạy bình thường
 
-1. flutter pub get
-2. flutter run
+1. Mở terminal tại thư mục gốc của project.
+2. Chạy `flutter pub get`.
+3. Chạy `flutter run`.
 
-Chế độ bỏ qua đăng nhập để test giao diện nhanh:
+### 2.2. Chạy nhanh để test giao diện
 
-1. flutter run --dart-define=BYPASS_LOGIN=true
+1. Chạy `flutter run --dart-define=BYPASS_LOGIN=true`.
+2. Chế độ này bỏ qua màn hình đăng nhập và vào thẳng màn chính.
 
-Lưu ý: Khi chạy Firebase thật, nếu cấu hình sai thì app sẽ hiện màn hình lỗi cấu hình Firebase thay vì tự chuyển sang chế độ local.
+### 2.3. Lưu ý khi chạy thật
 
-## 3. Luồng bắt đầu cho người dùng
+Nếu cấu hình Firebase sai, ứng dụng sẽ hiển thị màn lỗi cấu hình thay vì tự chuyển sang chế độ local.
 
-1. Mở ứng dụng
-2. Đăng nhập bằng email và mật khẩu, hoặc tạo tài khoản mới
-3. Khi đăng ký mới, hệ thống tạo hồ sơ user trên Firestore với isVerified = false
-4. Sau khi vào app, điều hướng bằng thanh tab bên dưới
+## 3. Luồng sử dụng chính của người dùng
 
-## 4. Hướng dẫn tab Bản đồ
+1. Người dùng mở ứng dụng.
+2. Nếu chưa đăng nhập, người dùng đăng ký hoặc đăng nhập bằng email và mật khẩu.
+3. Sau khi vào app, người dùng thao tác qua 4 tab chính.
+4. Mỗi tab tương ứng với một nhóm chức năng riêng.
 
-Tab Bản đồ đang dùng OpenStreetMap với các thao tác:
+## 4. Chức năng theo từng tab
 
-1. Nhấn nút GPS để xin quyền và lấy vị trí hiện tại
-2. Nhấn nút cộng hoặc trừ để phóng to, thu nhỏ
-3. Kéo panel dưới lên hoặc xuống để xem danh sách đơn khu vực (dữ liệu mẫu)
-4. Nhấn Tạo đơn hàng mới để mở form tạo đơn
+### 4.1. Tab Bản đồ
 
-### Tạo đơn trên bản đồ
+Tab Bản đồ dùng để xem vị trí, chọn địa chỉ và tạo đơn.
 
-Trong form tạo đơn, thao tác theo thứ tự sau:
+Chức năng chính:
 
-1. Nhập tiêu đề đơn
-2. Nhập receiver_id
-3. Chọn ảnh món đồ (camera hoặc thư viện)
-4. Chọn địa chỉ lấy hàng trên bản đồ
-5. Chọn địa chỉ giao hàng trên bản đồ
-6. Nhấn Tạo đơn
+1. Xin quyền GPS và lấy vị trí hiện tại.
+2. Hiển thị bản đồ OpenStreetMap.
+3. Xem danh sách đơn gần khu vực đang đứng.
+4. Mở form tạo đơn hàng mới.
 
-Hệ thống sẽ xử lý:
+#### Tạo đơn hàng mới
 
-1. Tải ảnh lên Supabase bucket orders
-2. Tạo bản ghi đơn lên Firestore
-3. Lưu đầy đủ senderLocation và receiverLocation (kinh độ, vĩ độ và địa chỉ nếu có)
+Khi tạo đơn, người dùng cần:
 
-Nếu thiếu ảnh hoặc thiếu một trong hai điểm địa chỉ, hệ thống sẽ chặn gửi và hiển thị thông báo.
+1. Nhập tiêu đề đơn.
+2. Nhập mã người nhận.
+3. Chọn ảnh món hàng.
+4. Chọn địa chỉ lấy hàng.
+5. Chọn địa chỉ giao hàng.
+6. Nhấn tạo đơn.
 
-## 5. Hướng dẫn tab Đơn hàng
+Hệ thống sẽ:
 
-Danh sách đơn lấy real-time từ Firestore và chia theo 4 trạng thái:
+1. Upload ảnh lên Supabase.
+2. Tạo bản ghi đơn trên Firestore.
+3. Lưu đầy đủ vị trí lấy và giao hàng.
+
+### 4.2. Tab Đơn hàng
+
+Tab Đơn hàng dùng để theo dõi và xử lý vòng đời đơn hàng.
+
+Các trạng thái hiển thị:
 
 1. Chờ nhận đơn
 2. Chờ giao hàng
 3. Hoàn thành
 4. Đã hủy
 
-Mỗi thẻ đơn hiển thị:
+Chức năng chính:
 
-1. Tiêu đề và mô tả
-2. Điểm lấy hàng và điểm giao hàng
-3. Khoảng cách dự kiến (km)
-4. Hạn giao
-5. Countdown thời gian còn lại (hoặc thời gian quá hạn)
-6. Cờ trễ hạn và phí giả lập nếu đơn quá deadline
-7. Các nút thao tác theo quyền
+1. Xem danh sách đơn theo thời gian thực.
+2. Theo dõi hạn giao và thời gian đếm ngược.
+3. Nhận đơn nếu có quyền.
+4. Hoàn tất giao nếu là carrier của đơn.
+5. Hủy đơn nếu có quyền hợp lệ.
+6. Đổi deadline nếu có quyền sửa.
 
-### Quyền thao tác hiện tại
+### 4.3. Tab Trò chuyện
 
-1. Nhận đơn:
-   Người dùng không phải sender, receiver, carrier và đơn đang ở trạng thái waitingCarrier.
-2. Hoàn tất giao:
-   Chỉ carrier của đơn và đơn đang ở waitingDelivery.
-3. Hủy đơn:
-   Sender, receiver, carrier hoặc creator có thể hủy khi đơn ở waitingCarrier hoặc waitingDelivery.
-4. Sửa địa chỉ:
-   Chỉ sender hoặc creator, và chỉ khi đơn ở waitingCarrier, chưa có carrier.
+Tab Trò chuyện dùng để giao tiếp theo từng đơn hàng.
 
-Quyền sửa địa chỉ được ràng buộc cả ở giao diện và trong transaction Firestore để tránh sửa sai luồng.
+Chức năng chính:
 
-Ngoài ra, các thao tác Nhận đơn, Hoàn tất giao, Hủy đơn đều chạy qua transaction Firestore để tránh race condition (ví dụ 2 người nhận cùng 1 đơn).
+1. Xem danh sách phòng chat của người dùng hiện tại.
+2. Chọn một phòng chat để xem nội dung.
+3. Gửi tin nhắn văn bản.
+4. Gửi ảnh trong chat.
+5. Rời khỏi phòng chat nếu cần.
 
-### Đổi tài khoản để test nhanh
+### 4.4. Tab Hồ sơ
 
-Trong tab Đơn hàng có nút đổi tài khoản thử nghiệm ở AppBar:
+Tab Hồ sơ dùng để quản lý thông tin cá nhân.
 
-1. Nhập user id mới
-2. Hoặc chọn nhanh từ danh sách user id gợi ý
-3. Nhấn áp dụng để xem hành vi quyền theo vai trò khác nhau
+Chức năng chính:
 
-## 6. Hướng dẫn tab Trò chuyện
+1. Xem thông tin hồ sơ.
+2. Cập nhật avatar.
+3. Cập nhật thông tin liên hệ.
+4. Xác thực tài khoản.
+5. Đổi giao diện sáng hoặc tối.
 
-Tab Trò chuyện đã kết nối dữ liệu thật từ Firestore.
+## 5. Những điểm cần chú ý khi đưa mã nguồn lên Git
 
-Thiết kế dữ liệu:
+Đây là phần quan trọng nhất khi thầy nhắc “chú ý mã nguồn đưa lên git”.
 
-1. chat_rooms (id theo order_id)
-2. chat_rooms/{room_id}/messages
+### 5.1. Chỉ đẩy mã nguồn cần thiết
 
-Luồng hoạt động:
+1. Chỉ commit file code, file cấu hình cần thiết và tài liệu.
+2. Không đẩy file sinh tự động như build cache, log, thư mục tạm, file biên dịch.
+3. Kiểm tra `.gitignore` trước khi push.
 
-1. Khi carrier nhận đơn thành công, hệ thống tự tạo (hoặc cập nhật) chat room cho 3 bên: sender, carrier, receiver.
-2. Vào tab Trò chuyện, hệ thống chỉ hiện các room mà current_user nằm trong participants.
-3. Chọn room ở cột trái để xem tin nhắn realtime ở cột phải.
-4. Gửi tin nhắn text, message được lưu realtime theo created_at.
+### 5.2. Không để lộ dữ liệu nhạy cảm
 
-Hiện trạng hỗ trợ:
+1. Không đưa key bí mật, token, mật khẩu thật lên Git nếu không cần thiết.
+2. File cấu hình riêng từng máy hoặc từng môi trường nên được xử lý cẩn thận.
+3. Với project này, cần chú ý các thông tin Firebase và Supabase trong code nguồn.
 
-1. Đã hỗ trợ text message
-2. Đã highlight tin nhắn của current user
-3. Đã auto scroll xuống cuối khi có tin mới
-4. Ảnh/location trong chat để làm tiếp ở bước sau
+### 5.3. Trạng thái repo phải sạch
 
-## 7. Hướng dẫn tab Hồ sơ
+1. Code trên Git nên ở trạng thái chạy được.
+2. Trước khi push nên kiểm tra không còn lỗi build hoặc lỗi phân tích.
+3. Nên có README hoặc hướng dẫn chạy rõ ràng để người khác clone về dùng được.
 
-Trang này hiện có:
+### 5.4. Kiểm tra tài nguyên ảnh và asset
 
-1. Chuyển đổi chế độ sáng hoặc tối (đang hoạt động)
-2. Các thao tác còn lại như sửa hồ sơ, cập nhật avatar, xác thực, thanh toán, hỗ trợ, đăng xuất, xóa tài khoản hiện vẫn ở mức giao diện mô phỏng
+1. Ảnh dùng trong app phải được thêm đúng vào asset.
+2. Đổi hoặc thêm logo thì phải kiểm tra lại đường dẫn và khai báo trong `pubspec.yaml`.
+3. Nếu tạo icon app cho Android/iOS, cần chạy lại tool sinh icon sau khi thay ảnh.
 
-## 8. Các lỗi thường gặp và cách xử lý
+### 5.5. Đảm bảo nội dung tài liệu đúng với code
 
-1. Lỗi cấu hình Firebase khi mở app:
-   Kiểm tra google-services.json, plugin Google Services trên Android và cấu hình Firebase theo từng nền tảng.
-2. Tải ảnh thất bại:
-   Kiểm tra Supabase đã khởi tạo, bucket orders, quyền upload và kết nối mạng.
-   Lưu ý: Web đã dùng luồng upload bytes (không dùng Image.file), nên nếu còn lỗi thường là do bucket/policy.
-3. Không lấy được GPS:
-   Kiểm tra đã bật Location Service, cấp quyền vị trí, và nếu dùng emulator thì đặt mock location.
-4. Không thấy đơn trong danh sách:
-   Kiểm tra đơn đã tạo thành công trên Firestore collection orders hay chưa.
-5. Không thấy room chat sau khi nhận đơn:
-   Kiểm tra thao tác Nhận đơn đã thành công và user hiện tại có nằm trong participants của room hay không.
-6. Lỗi query/index trong chat:
-   Chat đã chuyển sang subcollection messages theo room để tránh yêu cầu composite index cũ. Nếu còn lỗi, kiểm tra Firestore rules.
+1. Tài liệu trong repo phải phản ánh đúng trạng thái hiện tại của code.
+2. Nếu đổi luồng chức năng, cần cập nhật lại file hướng dẫn và báo cáo liên quan.
+3. Không để tài liệu mô tả tính năng đã xóa hoặc không còn tồn tại.
 
-## 9. Checklist test luồng hiện tại
+## 6. Quan hệ giữa các chức năng chính
 
-1. Đăng ký tài khoản mới
-2. Đăng nhập
-3. Tạo đơn có ảnh và hai địa chỉ trên bản đồ
-4. Vào tab Đơn hàng, xác nhận đơn xuất hiện trong Chờ nhận đơn
-5. Đổi user id thử nghiệm, nhận đơn (vai trò carrier)
-6. Sau khi nhận đơn, vào tab Trò chuyện và gửi/nhận tin nhắn giữa các vai trò
-7. Carrier bấm Hoàn tất giao
-8. Kiểm tra đơn chuyển sang Hoàn thành
+1. Đăng ký và đăng nhập là điều kiện đầu vào để vào hệ thống.
+2. Bản đồ là nơi khởi tạo luồng tạo đơn và tìm đơn gần vị trí.
+3. Đơn hàng là nơi xử lý vòng đời đơn và các hành động như nhận, hoàn tất, hủy.
+4. Trò chuyện phụ thuộc vào đơn hàng đã tồn tại và phòng chat được tạo từ đơn.
+5. Hồ sơ cá nhân liên kết với session người dùng và ảnh hưởng tới thông tin hiển thị trong app.
 
----
+## 7. Các lỗi thường gặp
 
-Cập nhật tài liệu: theo trạng thái code hiện tại của project.
+1. Lỗi Firebase: kiểm tra cấu hình Android/iOS/Web.
+2. Lỗi tải ảnh: kiểm tra Supabase bucket và quyền upload.
+3. Lỗi GPS: kiểm tra quyền vị trí và dịch vụ định vị.
+4. Không thấy đơn: kiểm tra đơn đã tạo thành công trên Firestore hay chưa.
+5. Không thấy phòng chat: kiểm tra đơn đã được nhận thành công và user có trong participants hay không.
+
+## 8. Checklist kiểm tra trước khi nộp Git
+
+1. Chạy `flutter pub get`.
+2. Chạy `flutter run` để kiểm tra app.
+3. Kiểm tra README và file hướng dẫn đã đúng nội dung mới.
+4. Đảm bảo không commit file rác hoặc file sinh tạm.
+5. Xem lại các file có chứa thông tin cấu hình để tránh lộ dữ liệu không cần thiết.
+
+## 9. Kết luận
+
+Khi đưa mã nguồn lên Git, điều cần chú ý nhất là: chỉ đẩy mã nguồn cần thiết, không lộ dữ liệu nhạy cảm, repo phải chạy được và tài liệu phải khớp với code hiện tại. Với UniSend, các chức năng chính xoay quanh đăng nhập, tạo đơn, xử lý đơn, chat theo đơn và quản lý hồ sơ.
