@@ -1,99 +1,89 @@
-# UniSend - Tài liệu UI/UX và logic Order hiện tại
+# UniSend
 
-Tài liệu này mô tả trạng thái code hiện tại của ứng dụng, tập trung vào:
+Tài liệu này mô tả cấu trúc thư mục trong `lib` của dự án UniSend để dễ tra cứu nhanh các lớp chính của ứng dụng.
 
-1. Logic user id
-2. Logic màn hình đơn hàng
-3. Cách UI ràng buộc thao tác theo dữ liệu
+## Cấu trúc `lib`
 
-Phạm vi tài liệu: chỉ mô tả UI/UX và logic hiển thị trên ứng dụng. Không chỉnh sửa và không mở rộng phần Firebase.
+```text
+lib/
+	main.dart
+	models/
+		1.gitkeep
+		order.dart
+		order_model.dart
+	providers/
+		chat_provider.dart
+		order_provider.dart
+	services/
+		auth_service.dart
+		chat_service.dart
+		firestore_service.dart
+		location_service.dart
+		order_service.dart
+		storage_service.dart
+		user_session_service.dart
+	views/
+		auth/
+			login_screen.dart
+			register_screen.dart
+		main/
+			chat_screen.dart
+			main_navigation.dart
+			map_screen.dart
+			order_list_screen.dart
+			profile_screen.dart
+	widgets/
+		common/
+			chat_bubble.dart
+			order_card.dart
+			user_avatar.dart
+```
 
-## 1. Tổng quan giao diện
+## Vai trò từng thư mục
 
-Ứng dụng dùng Material 3, hỗ trợ theme sáng/tối, và điều hướng chính qua 4 tab:
+`main.dart` là điểm vào của ứng dụng.
 
-1. Bản đồ
-2. Đơn hàng
-3. Trò chuyện
-4. Hồ sơ
+`models` chứa các lớp dữ liệu và mô hình nghiệp vụ liên quan đến đơn hàng.
 
-Luồng vào app:
+`providers` quản lý trạng thái cho các luồng chính như chat và order.
 
-1. Nếu xác thực sẵn sàng: theo luồng đăng nhập bình thường.
-2. Nếu chạy bypass/UI-only: vào thẳng màn hình chính để thao tác giao diện.
+`services` gom các lớp xử lý dữ liệu, xác thực, lưu trữ, vị trí và giao tiếp với Firebase hoặc nguồn dữ liệu liên quan.
 
-## 2. Trạng thái dữ liệu đơn hàng hiện tại
+`views` chứa toàn bộ màn hình giao diện, chia theo nhóm `auth` và `main`.
 
-Đã xóa toàn bộ dữ liệu test seed sẵn trong service đơn hàng.
+`widgets/common` chứa các widget dùng chung trong nhiều màn hình.
 
-Hệ quả hiện tại:
+## Ghi chú nhanh
 
-1. Màn danh sách đơn khởi tạo rỗng.
-2. Đơn mới xuất hiện khi người dùng tạo đơn từ form tạo đơn.
-3. Không còn bộ ORD-DEMO hoặc danh sách user demo được nạp sẵn khi khởi động.
+Các thư mục trong `views/main` đại diện cho 4 tab chính của ứng dụng: bản đồ, đơn hàng, trò chuyện và hồ sơ.
 
-## 3. Logic user id hiện tại
+Nhóm `widgets/common` đang giữ các thành phần tái sử dụng cho UI như avatar người dùng, bong bóng chat và thẻ đơn hàng.
 
-### 3.1 Nguồn current user
+## Hướng dẫn lấy code từ GitHub
 
-`current_user_id` được lấy theo thứ tự:
+1. Mở terminal và chuyển đến thư mục bạn muốn lưu dự án.
+2. Clone repository từ GitHub.
+3. Chuyển vào thư mục dự án vừa tải về.
 
-1. UID Firebase nếu có phiên đăng nhập.
-2. Nếu không có phiên đăng nhập, dùng định danh local trung tính là `local_user`.
+Ví dụ:
 
-### 3.2 Khi tạo đơn
+```bash
+git clone https://github.com/jovee112/UniSend_PTUD_CKy.git
+cd UniSend_PTUD_CKy
+```
 
-Form tạo đơn hỗ trợ 2 trường hợp:
+## Hướng dẫn chạy ứng dụng
 
-1. Tạo đơn thường: người dùng hiện tại là người gửi.
-2. Tạo đơn hộ: cho phép nhập người gửi khác.
+1. Cài Flutter và đảm bảo môi trường hoạt động bình thường.
+2. Chạy lệnh lấy dependency.
+3. Mở emulator hoặc kết nối thiết bị thật.
+4. Chạy ứng dụng.
 
-Luôn lưu thêm `created_by` bằng người dùng hiện tại để truy vết người tạo thao tác.
+Ví dụ:
 
-### 3.3 Về ảnh đơn
+```bash
+flutter pub get
+flutter run
+```
 
-Ảnh trong giai đoạn hiện tại phục vụ hiển thị UI và không dùng để gán quyền thao tác đơn hàng.
-
-## 4. Logic phân quyền thao tác Order
-
-### 4.1 Suy ra vai trò động từ dữ liệu
-
-Không gán vai trò cố định cho user. Vai trò được suy ra động bằng cách so sánh `current_user_id` với:
-
-1. `sender_id`
-2. `receiver_id`
-3. `carrier_id`
-4. `created_by`
-
-### 4.2 Điều kiện hiển thị và cho phép thao tác
-
-Mỗi thao tác được ràng buộc bởi 3 lớp dữ liệu:
-
-1. Vai trò suy ra từ id (ai được phép nhìn thấy nút).
-2. Trạng thái đơn (`order_status`).
-3. Cờ backend-style trên đơn (`canAccept`, `canMarkDelivered`, `canCancel`).
-
-Hành vi UI:
-
-1. Nếu không hợp lệ theo role hoặc trạng thái: ẩn nút.
-2. Nếu hợp lệ nhưng backend từ chối: hiện nút ở trạng thái disable và ưu tiên hiển thị lý do từ chối.
-
-## 5. Trình bày Order Card hiện tại
-
-Order Card đã được tối giản theo hướng dễ đọc:
-
-1. Chỉ hiển thị 1 trạng thái chính cho mỗi đơn.
-2. Không hiển thị trực tiếp các field kỹ thuật như `created_by`, `sender_id`, `receiver_id`, `carrier_id`.
-3. Chỉ giữ 1 thông điệp ngắn theo ngữ cảnh vai trò và trạng thái.
-4. Ưu tiên nhận diện bằng màu sắc và icon thay vì nhiều dòng chữ.
-
-## 6. Tóm tắt luồng thao tác hiện tại
-
-1. Vào app và chọn tab Đơn hàng.
-2. Nếu chưa có dữ liệu, màn hình hiển thị empty state theo từng trạng thái.
-3. Tạo đơn từ tab Bản đồ qua form tạo đơn.
-4. Quay lại tab Đơn hàng để theo dõi và thao tác theo quyền được suy ra từ dữ liệu.
-
-## 7. Ghi chú phạm vi
-
-Tài liệu này được cập nhật theo logic code hiện tại và việc loại bỏ dữ liệu test đã thêm, không thay đổi phần Firebase.
+Nếu muốn chạy trên Android emulator, bạn có thể khởi động emulator trước rồi mới chạy `flutter run`.
