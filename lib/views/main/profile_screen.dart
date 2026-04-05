@@ -444,6 +444,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         birthday: _birthday ?? '',
         formatDate: _formatDate,
         tryParseDate: _tryParseDate,
+        isPhoneTaken: (phone) =>
+            _firestoreService.isPhoneTaken(phone, excludeUserId: user.uid),
       ),
     );
 
@@ -937,6 +939,7 @@ class _ProfileEditSheet extends StatefulWidget {
     required this.birthday,
     required this.formatDate,
     required this.tryParseDate,
+    required this.isPhoneTaken,
   });
 
   final String name;
@@ -947,6 +950,7 @@ class _ProfileEditSheet extends StatefulWidget {
   final String birthday;
   final String Function(DateTime) formatDate;
   final DateTime? Function(String) tryParseDate;
+  final Future<bool> Function(String phone) isPhoneTaken;
 
   @override
   State<_ProfileEditSheet> createState() => _ProfileEditSheetState();
@@ -960,6 +964,7 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
   late final TextEditingController _phoneController;
   late final TextEditingController _addressController;
   late final TextEditingController _birthdayController;
+  String? _phoneDuplicateError;
 
   @override
   void initState() {
@@ -1009,10 +1014,31 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+
+    final phone = _phoneController.text.trim();
+    final isPhoneTaken = await widget.isPhoneTaken(phone);
+    if (!mounted) {
+      return;
+    }
+    if (isPhoneTaken) {
+      setState(() {
+        _phoneDuplicateError =
+            'Số điện thoại này đã được sử dụng bởi tài khoản khác.';
+      });
+      _formKey.currentState!.validate();
+      return;
+    }
+
+    if (_phoneDuplicateError != null) {
+      setState(() {
+        _phoneDuplicateError = null;
+      });
+    }
+
     Navigator.of(context).pop(
       _ProfileDraft(
         name: _nameController.text.trim(),
@@ -1069,6 +1095,14 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(labelText: 'Số điện thoại'),
+                onChanged: (value) {
+                  if (_phoneDuplicateError == null) {
+                    return;
+                  }
+                  setState(() {
+                    _phoneDuplicateError = null;
+                  });
+                },
                 validator: (value) {
                   final normalized =
                       value?.replaceAll(RegExp(r'\s+'), '') ?? '';
@@ -1077,6 +1111,9 @@ class _ProfileEditSheetState extends State<_ProfileEditSheet> {
                   }
                   if (!RegExp(r'^\d{10}$').hasMatch(normalized)) {
                     return 'Số điện thoại phải gồm 10 chữ số';
+                  }
+                  if (_phoneDuplicateError != null) {
+                    return _phoneDuplicateError;
                   }
                   return null;
                 },

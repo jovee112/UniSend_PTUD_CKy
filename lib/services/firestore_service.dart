@@ -452,6 +452,27 @@ class FirestoreService {
     }
   }
 
+  /// Check if a phone number already exists for another user.
+  Future<bool> isPhoneTaken(String phone, {String? excludeUserId}) async {
+    try {
+      final normalizedPhone = phone.trim();
+      if (normalizedPhone.isEmpty) {
+        return false;
+      }
+
+      final snapshot = await _firestore
+          .collection(usersCollection)
+          .where('phone', isEqualTo: normalizedPhone)
+          .limit(10)
+          .get();
+
+      return snapshot.docs.any((doc) => doc.id != excludeUserId);
+    } catch (e) {
+      debugPrint('Error checking phone number: $e');
+      return false;
+    }
+  }
+
   /// Save bank account data.
   Future<void> saveUserBankAccount({
     required String userId,
