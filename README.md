@@ -97,3 +97,45 @@ Order Card đã được tối giản theo hướng dễ đọc:
 ## 7. Ghi chú phạm vi
 
 Tài liệu này được cập nhật theo logic code hiện tại và việc loại bỏ dữ liệu test đã thêm, không thay đổi phần Firebase.
+
+## 8. Cấu trúc thư mục `lib`
+
+Phần `lib` của project được tổ chức theo hướng tách rõ entrypoint, dữ liệu, state, nghiệp vụ và UI:
+
+1. `main.dart`: điểm khởi động ứng dụng, khởi tạo Firebase, Supabase, theme, provider và điều hướng đăng nhập / màn hình chính.
+2. `models/`: chứa các model dữ liệu của đơn hàng, hiện có `order.dart` và `order_model.dart`.
+3. `providers/`: quản lý state cho các luồng chính như đơn hàng và chat.
+4. `services/`: chứa các service làm việc với session người dùng, auth, Firestore, Supabase storage, vị trí, đơn hàng và chat.
+5. `views/auth/`: các màn hình đăng nhập và đăng ký.
+6. `views/main/`: các màn hình chính của ứng dụng như bản đồ, danh sách đơn, chat, hồ sơ và navigation tổng.
+7. `widgets/common/`: các widget dùng chung như `order_card`, `chat_bubble`, `user_avatar`.
+
+## 9. Cách khởi chạy ứng dụng sau khi lấy code từ GitHub
+
+Sau khi clone project về máy, chạy theo các bước sau:
+
+1. Mở terminal tại thư mục gốc của project.
+2. Chạy `flutter pub get` để tải dependency.
+3. Chạy `flutter run` để mở ứng dụng trên thiết bị hoặc emulator đang kết nối.
+4. Nếu muốn chạy nhanh và bỏ qua đăng nhập để test giao diện, dùng `flutter run --dart-define=BYPASS_LOGIN=true`.
+5. Nếu chạy trên web, có thể chỉ định thêm device như `flutter run -d chrome`.
+
+Nếu app dừng ở màn hình lỗi cấu hình Firebase, hãy kiểm tra lại cấu hình Firebase theo nền tảng đang chạy. Ứng dụng hiện khởi tạo Firebase và Supabase ngay khi mở app.
+
+## 10. Luồng ứng dụng theo code hiện tại
+
+Luồng chạy thực tế của app hiện tại như sau:
+
+1. `main.dart` khởi tạo `Firebase`, `Supabase`, `UserSessionService`, `OrderService`, `ChatService`, `OrderProvider` và `ChatProvider`.
+2. Nếu cấu hình Firebase lỗi, app dừng ở màn hình cảnh báo cấu hình. Nếu bật `BYPASS_LOGIN=true`, app vào thẳng màn hình chính.
+3. Nếu không bypass, app dùng trạng thái đăng nhập của Firebase để quyết định hiển thị `LoginScreen` hay `MainNavigation`.
+4. `LoginScreen` chỉ thực hiện đăng nhập bằng email và mật khẩu. `RegisterScreen` kiểm tra email `@gmail.com`, tạo tài khoản mới và lưu hồ sơ user vào Firestore.
+5. Sau khi vào app, `MainNavigation` giữ 4 tab bằng `IndexedStack`: Bản đồ, Đơn hàng, Trò chuyện và Hồ sơ.
+6. Tab Bản đồ lấy vị trí hiện tại, tải các đơn gần khu vực đang đứng, cho phép nhận đơn nhanh và mở form tạo đơn.
+7. Form tạo đơn yêu cầu ảnh, mã người nhận, nội dung đơn, địa chỉ lấy hàng và địa chỉ giao hàng; sau đó upload ảnh và tạo bản ghi đơn mới.
+8. Tab Đơn hàng lấy dữ liệu từ `OrderProvider`, tự lọc theo user hiện tại và account id, rồi chia theo các trạng thái chờ nhận, chờ giao, hoàn thành và đã hủy.
+9. Khi người dùng nhận đơn, hoàn tất đơn, đổi deadline hoặc hủy đơn, thao tác được chạy qua `OrderProvider` rồi đẩy xuống service; sau khi nhận đơn thành công, app mở luôn room chat của đơn đó.
+10. Tab Trò chuyện đọc danh sách room theo user hiện tại, tự chọn room đầu tiên nếu chưa chọn, hiển thị tin nhắn theo room đang mở và hỗ trợ gửi text hoặc ảnh.
+11. Tab Hồ sơ tải dữ liệu user từ Firestore, đồng bộ `accountId` vào session service, cho phép đổi theme và xử lý các thao tác hồ sơ, avatar, xác thực.
+
+Tóm lại, luồng chính của app là: khởi tạo dịch vụ nền -> xác thực hoặc bypass -> vào `MainNavigation` -> thao tác qua 4 tab dựa trên dữ liệu thật từ Firebase / Firestore / Supabase.
