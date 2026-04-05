@@ -329,7 +329,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!context.mounted) {
         return;
       }
-      Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đã rời khỏi phòng chat.'),
