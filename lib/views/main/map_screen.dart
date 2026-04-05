@@ -329,7 +329,9 @@ class _MapScreenState extends State<MapScreen> {
 
     double nearestDistance = double.infinity;
     for (final order in nearbyOrders) {
-      final distance = location.distanceTo(order.senderLocation);
+      final distance = location.distanceTo(
+        order.deliveryLocation ?? order.receiverLocation,
+      );
       if (distance < nearestDistance) {
         nearestDistance = distance;
       }
@@ -983,7 +985,7 @@ class _MapScreenState extends State<MapScreen> {
 // ============================================================================
 
 class _NearbyOrderCard extends StatelessWidget {
-  const _NearbyOrderCard({
+  _NearbyOrderCard({
     required this.order,
     required this.userLocation,
     required this.onAccept,
@@ -992,6 +994,7 @@ class _NearbyOrderCard extends StatelessWidget {
   final DeliveryOrder order;
   final Location userLocation;
   final VoidCallback onAccept;
+  final StorageService _storageService = StorageService();
 
   String _formatLocation(Location location) {
     final address = location.address?.trim();
@@ -1001,10 +1004,129 @@ class _NearbyOrderCard extends StatelessWidget {
     return '${location.latitude.toStringAsFixed(5)}, ${location.longitude.toStringAsFixed(5)}';
   }
 
+  Future<String?> _resolveImageUrl() {
+    return _storageService.resolveStoredImageUrl(order.imageUrl);
+  }
+
+  Future<void> _openOrderInfoSheet(BuildContext context) async {
+    final imageUrlFuture = _resolveImageUrl();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 8,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Thông tin đơn hàng',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AspectRatio(
+                    aspectRatio: 1.6,
+                    child: FutureBuilder<String?>(
+                      future: imageUrlFuture,
+                      builder: (context, snapshot) {
+                        final resolvedUrl = snapshot.data?.trim();
+                        if (snapshot.connectionState != ConnectionState.done ||
+                            resolvedUrl == null ||
+                            resolvedUrl.isEmpty) {
+                          return Container(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                            child: const Center(
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                size: 48,
+                              ),
+                            ),
+                          );
+                        }
+
+                        return Image.network(
+                          resolvedUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.image_not_supported_outlined,
+                                  size: 48,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Tiêu đề',
+                  style: Theme.of(sheetContext).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  order.title,
+                  style: Theme.of(
+                    sheetContext,
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Mô tả',
+                  style: Theme.of(sheetContext).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  order.description.isEmpty
+                      ? 'Chưa có mô tả.'
+                      : order.description,
+                  style: Theme.of(sheetContext).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Đóng'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final pickupDistanceKm = userLocation.distanceTo(order.senderLocation);
+    final pickupDistanceKm = userLocation.distanceTo(
+      order.pickupLocation ?? order.senderLocation,
+    );
+    final deliveryDistanceKm = userLocation.distanceTo(
+      order.deliveryLocation ?? order.receiverLocation,
+    );
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -1014,20 +1136,26 @@ class _NearbyOrderCard extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      scheme.secondaryContainer,
-                      scheme.primaryContainer,
-                    ],
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _openOrderInfoSheet(context),
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          scheme.secondaryContainer,
+                          scheme.primaryContainer,
+                        ],
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.inventory_2_outlined,
+                      color: scheme.onPrimaryContainer,
+                    ),
                   ),
-                ),
-                child: Icon(
-                  Icons.inventory_2_outlined,
-                  color: scheme.onPrimaryContainer,
                 ),
               ),
             ),
@@ -1047,7 +1175,13 @@ class _NearbyOrderCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text('Giao hàng: ${_formatLocation(order.receiverLocation)}'),
                   const SizedBox(height: 4),
-                  Text('Cách bạn: ${pickupDistanceKm.toStringAsFixed(2)} km'),
+                  Text(
+                    'Cách điểm giao: ${deliveryDistanceKm.toStringAsFixed(2)} km',
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Cách điểm lấy: ${pickupDistanceKm.toStringAsFixed(2)} km',
+                  ),
                   const SizedBox(height: 8),
                   Chip(
                     visualDensity: VisualDensity.compact,

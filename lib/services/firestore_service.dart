@@ -145,9 +145,13 @@ class FirestoreService {
 
       return orders
           .where((order) {
-            final targetLocation = order.pickupLocation ?? order.senderLocation;
-            final distance = userLocation.distanceTo(targetLocation);
-            return distance <= radiusKm;
+            final pickupLocation = order.pickupLocation ?? order.senderLocation;
+            final deliveryLocation =
+                order.deliveryLocation ?? order.receiverLocation;
+            final pickupDistance = userLocation.distanceTo(pickupLocation);
+            final deliveryDistance = userLocation.distanceTo(deliveryLocation);
+
+            return pickupDistance <= radiusKm && deliveryDistance <= radiusKm;
           })
           .toList(growable: false);
     } catch (e) {
